@@ -1,0 +1,46 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "vision-ice-analysis"
+version = "0.1.0"
+description = "End-to-end spike sorting workflows for ICe Vision Lab recordings"
+readme = "README.md"
+requires-python = ">=3.10"
+license = "AGPL-3.0-only"
+classifiers = ["License :: OSI Approved :: GNU Affero General Public License v3"]
+authors = [{name = "ICe Vision Lab"}]
+keywords = ["neuroscience", "spike-sorting", "pipeline", "electrophysiology"]
+
+dependencies = [
+    "mini-analysis-cidbn>=0.1",
+    "numpy",
+    "visioniceio>=0.3",
+]
+
+[project.optional-dependencies]
+test = ["pytest>=7.0", "pytest-cov"]
+docs = ["sphinx>=6.0", "pydata-sphinx-theme>=0.14", "sphinx-design", "numpydoc"]
+dev = ["ruff>=0.4"]
+
+[project.urls]
+Repository = "https://github.com/ice-vision-lab/VisionICeAnalysis"
+Documentation = "https://ice-vision-lab.github.io/VisionICeAnalysis/"
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "UP", "N"]
+
+[tool.ruff.format]
+quote-style = "double"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "--strict-markers -v"
+
+[tool.hatch.build.targets.wheel]
+packages = ["vision_ice_analysis"]
