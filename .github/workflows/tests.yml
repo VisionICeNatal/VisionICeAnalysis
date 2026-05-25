@@ -13,9 +13,22 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python-version }}
+      # VisionICeIO is a private repo; anonymous git+https:// clones fail
+      # with "could not read Username". Authenticate via the repo secret
+      # UPSTREAM_REPO_TOKEN (fine-grained PAT with read access to
+      # VisionICeNatal/VisionICeIO). See docs/developer.rst → "Continuous
+      # Integration" for the one-time setup.
+      - name: Configure git for private upstream cloning
+        env:
+          UPSTREAM_REPO_TOKEN: ${{ secrets.UPSTREAM_REPO_TOKEN }}
+        run: |
+          git config --global \
+            url."https://x-access-token:${UPSTREAM_REPO_TOKEN}@github.com/".insteadOf \
+            "https://github.com/"
       # Install sibling packages from git until they're published to PyPI.
       # Once visioniceio and neural-cca are on PyPI, drop these two lines
-      # and the `pip install -e ".[test]"` below will pull them automatically.
+      # (and the git-config step above) — `pip install -e ".[test]"` will
+      # then pull them automatically.
       - run: pip install "visioniceio @ git+https://github.com/VisionICeNatal/VisionICeIO.git@main"
       - run: pip install "neural-cca @ git+https://github.com/goecidbn/neural_cca.git@main"
       - run: pip install -e ".[test]"

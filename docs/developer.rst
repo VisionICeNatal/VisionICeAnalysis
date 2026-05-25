@@ -104,6 +104,32 @@ marked **✓** in ``CROSS_CHECKS.md``. The unmarked items are
 runtime-only and need one real experiment loaded end-to-end to
 verify.
 
+Continuous Integration
+----------------------
+
+Both CI workflows (``.github/workflows/tests.yml`` and ``docs.yml``)
+need to clone ``VisionICeNatal/VisionICeIO`` from git, which is a
+**private** repository. Anonymous ``git+https://`` fails ("could not
+read Username for 'https://github.com'"), so the workflows authenticate
+via a repository secret named ``UPSTREAM_REPO_TOKEN``.
+
+To provision the secret (one-time, per fork):
+
+1. Generate a fine-grained Personal Access Token at
+   https://github.com/settings/personal-access-tokens/new with **read
+   access to the Contents** of ``VisionICeNatal/VisionICeIO`` (and
+   ``goecidbn/neural_cca`` if it ever turns private too).
+2. Add it as a repo secret named ``UPSTREAM_REPO_TOKEN`` under
+   *Settings → Secrets and variables → Actions*.
+
+The workflows then run a ``git config --global url."https://x-access-token:$TOKEN@github.com/".insteadOf "https://github.com/"``
+step before any ``pip install``, so every git+https clone in the job
+transparently uses the token.
+
+This whole dance disappears the moment ``visioniceio`` and
+``neural-cca`` are on PyPI — both the secret and the
+``git config``/``pip install ... @ git+https://...`` lines come out.
+
 Upstream version-pin policy
 ---------------------------
 

@@ -123,6 +123,21 @@ versioning follows [SemVer](https://semver.org/spec/v2.0.0.html).
   workflows that actually do. Corrected the `maximum_signature_line_length`
   comment in `docs/conf.py` (88 is Black/Ruff, not PEP 8).
 
+### Fixed
+- **CI was failing on every push** because
+  ``.github/workflows/{tests,docs}.yml`` tried to clone the **private**
+  ``VisionICeNatal/VisionICeIO`` repo over anonymous
+  ``git+https://`` (``fatal: could not read Username for
+  'https://github.com'`` → exit 128 → cancel-on-fail aborts the whole
+  matrix). Both workflows now run a
+  ``git config --global url."https://x-access-token:$TOKEN@github.com/".insteadOf "https://github.com/"``
+  step before any `pip install`, using a new repo secret
+  ``UPSTREAM_REPO_TOKEN``. Setup is documented in
+  `docs/developer.rst` → *Continuous Integration*; the secret needs
+  to be created once per fork before CI turns green.
+- `.gitignore` now matches `*_failed.txt` so dumps from the
+  CI-failure fetch tooling stop showing up as untracked files.
+
 ### Known issues (carried forward)
 - `.github/workflows/{tests,docs}.yml` install `visioniceio` and
   `neural-cca` from `@main` rather than a pinned tag/commit. A

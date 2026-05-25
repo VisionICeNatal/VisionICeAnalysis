@@ -20,6 +20,15 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
+      # See tests.yml for the rationale on UPSTREAM_REPO_TOKEN; same
+      # private-repo problem applies here.
+      - name: Configure git for private upstream cloning
+        env:
+          UPSTREAM_REPO_TOKEN: ${{ secrets.UPSTREAM_REPO_TOKEN }}
+        run: |
+          git config --global \
+            url."https://x-access-token:${UPSTREAM_REPO_TOKEN}@github.com/".insteadOf \
+            "https://github.com/"
       # Install sibling packages from git until they're published to PyPI.
       - run: pip install "visioniceio @ git+https://github.com/VisionICeNatal/VisionICeIO.git@main"
       - run: pip install "neural-cca @ git+https://github.com/goecidbn/neural_cca.git@main"

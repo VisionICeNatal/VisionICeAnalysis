@@ -24,3 +24,7 @@ venv/
 
 .claude/
 warnings_sphinx_build.txt
+
+# Local dumps from CI-failure fetch tooling
+# (filename pattern: YYYY_MM_DD_<org>_<repo>_<sha>_failed.txt)
+*_failed.txt
