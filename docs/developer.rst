@@ -160,7 +160,11 @@ Release Checklist
 2. Re-verify ``CROSS_CHECKS.md`` against the upstream versions you are
    pinning against.
 3. Update the version in ``pyproject.toml`` (``__init__.py`` reads it
-   dynamically via ``importlib.metadata``).
+   dynamically via ``importlib.metadata``). Also bump the
+   ``__version__`` fallback string in
+   ``vision_ice_analysis/__init__.py`` so a source-checkout import
+   (no ``pip install``) reports the correct release rather than a
+   stale value.
 4. Update upstream pins in ``pyproject.toml`` if you crossed a 0.x
    minor (see *Upstream version-pin policy* above).
 5. Roll ``CHANGELOG.md``: rename ``## [Unreleased]`` to

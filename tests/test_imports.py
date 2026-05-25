@@ -61,3 +61,33 @@ def test_sorting_data_signature() -> None:
     assert sd.stim_window == (0.5, 2.5)
     # stimulus_duration is the window length (end - onset), not the endpoint.
     assert sd.stimulus_duration == 2.0
+
+
+def test_provenance_helper_shape() -> None:
+    """The bridge's ``_provenance`` helper produces the documented dict shape.
+
+    See ``CROSS_CHECKS.md`` → *Bridge-side contracts* for the field
+    list. Downstream code is allowed to extend this dict, but the
+    bridge's own keys form a stable schema — rename them and a paper's
+    provenance audit trail breaks silently.
+    """
+    from vision_ice_analysis.pipelines import _provenance
+
+    p = _provenance(seed=12345)
+
+    assert set(p.keys()) >= {"loaded_at", "seed", "bit_generator", "software_versions"}
+    assert p["seed"] == 12345
+    # bit_generator pairs with seed: a paper citing the seed must also
+    # cite the BitGenerator class (Generator has no cross-version
+    # algorithm-stability guarantee). See CROSS_CHECKS.md → RNG policy.
+    assert p["bit_generator"] == "PCG64DXSM"
+    assert isinstance(p["software_versions"], dict)
+    # Python version is always resolvable from sys.version; the package
+    # versions may be None when running uninstalled from a source checkout,
+    # but the keys themselves must be present.
+    sw = p["software_versions"]
+    for key in ("vision-ice-analysis", "neural-cca", "visioniceio", "numpy", "python"):
+        assert key in sw, f"software_versions missing '{key}'"
+    assert sw["python"], "python version should always resolve"
+    # ISO-8601 timestamp contains a 'T' between date and time.
+    assert "T" in p["loaded_at"]

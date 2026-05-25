@@ -6,6 +6,52 @@ versioning follows [SemVer](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+- `seed` kwarg on `load_from_visioniceio` and `batch_sort_experiment`
+  for reproducible stochastic clustering. When ``None``, a fresh
+  ~128-bit master seed is drawn from OS entropy via
+  ``numpy.random.SeedSequence()`` — never ``default_rng()`` (PCG64
+  parallel-stream bug, numpy/numpy#16313), never small integers /
+  PIDs / timestamps (defeat entropy mixing). The seed is recorded
+  into ``SortingData.metadata['provenance']['seed']`` so it survives
+  downstream and can be cited in publications. The bridge contract
+  pins the BitGenerator to ``PCG64DXSM``; downstream RNG must be
+  constructed as
+  ``Generator(PCG64DXSM(SeedSequence(seed)))``. See
+  ``CROSS_CHECKS.md`` → *RNG policy* for the full contract, including
+  spawning recipe for per-electrode / per-fold sub-streams.
+- `extra_metadata` kwarg on `load_from_visioniceio` letting callers
+  merge custom FAIR / NWB-style metadata (subject ID, brain area,
+  probe geometry, input file checksums, …) into
+  ``SortingData.metadata``. Bridge-managed keys take precedence on
+  collision so callers cannot accidentally overwrite the contract.
+- `SortingData.metadata['provenance']` dict populated by
+  ``_provenance`` in ``pipelines.py``: ``loaded_at`` (ISO-8601 UTC),
+  ``seed`` (master), ``bit_generator`` (``"PCG64DXSM"``), and
+  ``software_versions`` for
+  ``vision-ice-analysis`` / ``neural-cca`` / ``visioniceio`` /
+  ``numpy`` / ``python``. The ``seed`` + ``bit_generator`` pair is
+  the canonical reproducibility key — ``Generator`` does not
+  guarantee cross-numpy-version algorithm stability, so both must
+  be logged. See ``CROSS_CHECKS.md`` → *Bridge-side contracts* for
+  the schema.
+- `steps2degree` re-exported from
+  ``vision_ice_analysis/__init__.py`` (and added to ``__all__``).
+  Callers who want a non-default ``tlabel2angle`` mapping can now
+  ``from vision_ice_analysis import steps2degree`` without
+  reaching into ``neural_cca`` directly — restoring the
+  "single import surface" the bridge advertises.
+- `tests/test_imports.py::test_provenance_helper_shape` — covers the
+  documented provenance keys (``loaded_at``, ``seed``,
+  ``bit_generator``, ``software_versions``) so a rename surfaces in
+  CI.
+- `warnings.warn` in ``load_from_visioniceio``:
+  - When ``waveform_fs < 10 kHz`` (likely metadata misread; typical
+    extracellular spike-sorting rigs run 20-30 kHz).
+  - When ``trials per direction < 5`` (below the Mazurek et al. 2014
+    *Front. Neural Circuits* recommendation for stable OSI/DSI
+    estimates).
+
 ### Changed
 - `.github/workflows/{tests,docs}.yml` now pin `visioniceio` and
   `neural-cca` to specific commit SHAs (`63bb74a` and `86fe942`
@@ -18,6 +64,51 @@ versioning follows [SemVer](https://semver.org/spec/v2.0.0.html).
   install recipes in `README.md` and `CROSS_CHECKS.md` deliberately
   stay on `@main` — those exist to track latest, not for CI
   determinism.
+- ``vision_ice_analysis/__init__.py``: ``__version__`` fallback bumped
+  from ``"0.0.0"`` to ``"0.1.1"`` so a source-checkout import reports
+  the current release rather than a sentinel. Release Checklist in
+  ``docs/developer.rst`` extended with a step to keep this in sync.
+
+### Documentation
+- ``CROSS_CHECKS.md``: added a batch of cross-check items, two new
+  sections (**Bridge-side contracts**, **RNG policy**), and a
+  ``steps2degree`` re-export note.
+  - **visioniceio**: ``exp.spike_times`` unit (seconds vs sample-frames);
+    trial-index origin (0- vs 1-based); narrowed the NaN-padding entry
+    to clarify rectangular-storage necessity and call out partial-snippet
+    handling.
+  - **neural_cca**: ``stim_window`` open/closed interval semantics
+    (bridge currently documents ``(onset, end]`` — inverse of common
+    ``[onset, end)`` convention); OSI/DSI formula choice (peak-orthogonal
+    vs Mazurek 2014's 1−Circular Variance); RNG-seed kwarg name and
+    propagation; ``tlabel2angle`` deprecation watch (upstream may
+    remove or rename the concept; bridge has to adapt).
+  - **Bridge-side contracts**: documented ``SortingData.metadata``
+    schema (electrode/name/data_dir/experiment_metadata/provenance plus
+    caller extras); the ``provenance`` sub-schema now includes
+    ``bit_generator``; new *Trial structure* sub-section documents
+    the implicit ``[0, onset)`` baseline epoch and absence of a
+    post-stim epoch; round-trip expectation through
+    ``run_sorting_pipeline``; recommended FAIR / NWB extras
+    (subject_id, brain_area, probe, reference_scheme, input_sha256, …).
+  - **RNG policy** (new section): pins ``PCG64DXSM`` as the bridge's
+    BitGenerator contract; mandates
+    ``Generator(PCG64DXSM(SeedSequence(seed)))`` construction (not
+    ``default_rng()``, not ``RandomState``); documents the
+    spawn-from-parent-SeedSequence pattern for per-trial /
+    per-electrode / per-fold sub-streams; lists cross-check items
+    upstream sorters must respect (seed honoured by every stochastic
+    step, spawn vs derived ints, seed propagation into result dicts).
+  - ``stim_frequency`` row in the ``SortingData`` kwarg table now
+    names Hz; ``spike_times`` / ``trials`` / ``angles`` rows annotated
+    with their expected units and pending unknowns.
+- ``vision_ice_analysis/pipelines.py``: docstring for
+  ``load_from_visioniceio`` now names ``stim_window`` units (seconds),
+  flags the open/closed-interval ambiguity, mentions the Mazurek 2014
+  trial-count guideline, documents the new ``seed`` / ``extra_metadata``
+  kwargs, and pins the recommended numpy RNG construction pattern.
+  ``batch_sort_experiment`` docstring documents ``seed`` forwarding
+  and the upstream kwarg-name uncertainty.
 
 ### Known issues (carried forward)
 - `visioniceio` does not yet publish a Sphinx site; intersphinx
