@@ -35,25 +35,29 @@ def test_bridge_callables() -> None:
 
 
 def test_sorting_data_signature() -> None:
-    """The re-exported SortingData accepts the new (stim_window) API.
+    """``SortingData`` accepts every kwarg the bridge passes in production.
 
-    Guards against the regression where the bridge was passing the old
-    ``trial_duration`` / ``stimulus_onset`` kwargs to a dataclass that
-    no longer accepts them.
+    Mirrors the exact call shape of
+    :func:`vision_ice_analysis.pipelines.load_from_visioniceio` so that
+    any upstream rename or required-arg change to ``SortingData``
+    surfaces here (not at the first call against a real experiment).
     """
     import numpy as np
 
     from vision_ice_analysis import SortingData
 
-    # Minimal valid construction with the new keyword names.
     sd = SortingData(
         waveforms=np.zeros((3, 8), dtype=np.float64),
         spike_times=np.array([0.1, 0.2, 0.3], dtype=np.float64),
         trials=np.array([0, 0, 1], dtype=np.int64),
         angles=np.array([0.0, 30.0], dtype=np.float64),
+        waveform_fs=20_000.0,
+        n_trials=2,
         stim_window=(0.5, 2.5),
         stim_frequency=2.0,
+        metadata={"source": "test_sorting_data_signature"},
     )
     assert sd.n_spikes == 3
     assert sd.stim_window == (0.5, 2.5)
+    # stimulus_duration is the window length (end - onset), not the endpoint.
     assert sd.stimulus_duration == 2.0

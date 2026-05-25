@@ -19,4 +19,4 @@ jobs:
       - run: pip install "visioniceio @ git+https://github.com/VisionICeNatal/VisionICeIO.git@main"
       - run: pip install "neural-cca @ git+https://github.com/goecidbn/neural_cca.git@main"
       - run: pip install -e ".[test]"
-      - run: pytest --cov=vision_ice_analysis --cov-report=xml
+      - run: pytest --cov=vision_ice_analysis --cov-report=term-missing

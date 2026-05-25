@@ -36,9 +36,9 @@ Run with coverage::
 
     pytest --cov=vision_ice_analysis --cov-report=term-missing
 
-Integration tests require real recording data in the DLTG format.
-Unit tests should use synthetic data generated via ``neural-cca``
-helper functions (see its developer guide).
+The current suite is import-only smoke tests; any new tests that need
+spike data should use synthetic arrays rather than committing real
+DLTG recordings to the repo.
 
 Linting and Formatting
 ----------------------
@@ -53,14 +53,22 @@ The project uses `ruff <https://docs.astral.sh/ruff/>`_::
 Building the Documentation
 --------------------------
 
-Build locally::
+The docs build imports the package and both upstream dependencies for
+autodoc — install them first (the editable-install line in *Setting
+up a Development Environment* above covers this; on a fresh shell run
+``pip install -e ".[docs]"`` plus the two ``visioniceio`` /
+``neural-cca`` git installs from ``.github/workflows/docs.yml``).
+
+Then build locally::
 
     cd docs
     make html
 
-The Sphinx configuration includes ``intersphinx`` mappings to both
-``visioniceio`` and ``neural_cca`` docs, so cross-references resolve
-automatically when those docs are published.
+The Sphinx configuration enables ``intersphinx`` for ``neural_cca``
+(its docs site is published). The ``visioniceio`` mapping is staged
+but commented out until that project ships its own docs site —
+references to ``visioniceio`` in this repo's docs are rendered as
+plain literals until then.
 
 Adding a New Pipeline
 ---------------------
@@ -96,6 +104,16 @@ marked **✓** in ``CROSS_CHECKS.md``. The unmarked items are
 runtime-only and need one real experiment loaded end-to-end to
 verify.
 
+Upstream version-pin policy
+---------------------------
+
+The bridge and both upstream dependencies (``neural-cca``,
+``visioniceio``) are pre-1.0. Every minor bump (0.x → 0.(x+1)) can be
+breaking, so ``pyproject.toml`` pins upstreams at ``>=0.1,<0.2``.
+Widening either bound is a release-blocking action: re-verify
+``CROSS_CHECKS.md`` against the new upstream, then update the pin
+and the changelog in the same commit.
+
 Release Checklist
 -----------------
 
@@ -105,7 +123,8 @@ Release Checklist
    pinning against.
 3. Update the version in ``pyproject.toml`` (``__init__.py`` reads it
    dynamically via ``importlib.metadata``).
-4. Update dependency version pins in ``pyproject.toml`` if needed.
+4. Update upstream pins in ``pyproject.toml`` if you crossed a 0.x
+   minor (see *Upstream version-pin policy* above).
 5. Roll ``CHANGELOG.md``: rename ``## [Unreleased]`` to
    ``## [vX.Y.Z] — YYYY-MM-DD`` and open a fresh empty
    ``## [Unreleased]`` section above it.

@@ -10,6 +10,8 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      - run: pip install ruff
+      # Pin ruff so a new release doesn't flap CI on unrelated PRs.
+      # Bump deliberately and re-run lint locally before merging the bump.
+      - run: pip install ruff==0.15.14
       - run: ruff check .
       - run: ruff format --check .

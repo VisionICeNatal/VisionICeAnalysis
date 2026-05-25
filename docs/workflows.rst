@@ -37,7 +37,7 @@ electrode::
         results[elec] = run_sorting_pipeline(data, plot=False)
 
 .. note::
-    ``.ssort`` export is handled upstream in :mod:`visioniceio`; see its
+    ``.ssort`` export is handled upstream in ``visioniceio``; see its
     documentation for the binary format and writer API.
 
 Batch summary (zarr)

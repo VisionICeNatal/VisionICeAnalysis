@@ -1,6 +1,6 @@
 """VisionICeAnalysis — End-to-end workflows for Vision Lab recordings.
 
-Combines :mod:`visioniceio` (LabView binary I/O) and :mod:`neural_cca`
+Combines ``visioniceio`` (LabView binary I/O) and :mod:`neural_cca`
 (spike sorting, STA, tuning analysis) into convenient experiment-level
 pipelines.
 

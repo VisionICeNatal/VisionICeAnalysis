@@ -7,11 +7,20 @@ Bridges [VisionICeIO](https://github.com/VisionICeNatal/VisionICeIO)
 
 ## Installation
 
+Until the packages are published to PyPI, install all three from git:
+
 ```bash
-pip install vision-ice-analysis
+pip install \
+  "visioniceio @ git+https://github.com/VisionICeNatal/VisionICeIO.git@main" \
+  "neural-cca @ git+https://github.com/goecidbn/neural_cca.git@main" \
+  "vision-ice-analysis @ git+https://github.com/VisionICeNatal/VisionICeAnalysis.git@main"
 ```
 
-This automatically installs `visioniceio` and `neural-cca`.
+Once published, this collapses to:
+
+```bash
+pip install vision-ice-analysis  # will pull visioniceio and neural-cca automatically
+```
 
 ## Quick Start
 

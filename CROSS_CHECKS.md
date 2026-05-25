@@ -29,25 +29,27 @@ Failure to import any of these breaks `import vision_ice_analysis`.
 ### `SortingData` constructor
 
 Used in [`pipelines.load_from_visioniceio`](vision_ice_analysis/pipelines.py).
-Keyword args the bridge passes:
+The bridge passes the full keyword set below; all of them are exercised
+by `test_sorting_data_signature` (**✓**), so an upstream rename or
+required-arg change breaks tests immediately.
 
-| kwarg            | type                                   | notes                                  |
-| ---------------- | -------------------------------------- | -------------------------------------- |
-| `waveforms`      | `np.ndarray (n_spikes, snippet_len)` float64 |                                  |
-| `spike_times`    | `np.ndarray (n_spikes,)` float64       |                                        |
-| `trials`         | `np.ndarray (n_spikes,)` int64         |                                        |
-| `angles`         | `np.ndarray (n_trials,)` float64       |                                        |
-| `waveform_fs`    | float (Hz)                             |                                        |
-| `n_trials`       | int                                    |                                        |
-| `stim_window`    | `(onset, end)` tuple of float seconds  | **✓** covered by `test_sorting_data_signature` |
-| `stim_frequency` | float \| None                          |                                        |
-| `metadata`       | dict                                   |                                        |
+| kwarg            | type                                          |
+| ---------------- | --------------------------------------------- |
+| `waveforms`      | `np.ndarray (n_spikes, snippet_len)` float64  |
+| `spike_times`    | `np.ndarray (n_spikes,)` float64              |
+| `trials`         | `np.ndarray (n_spikes,)` int64                |
+| `angles`         | `np.ndarray (n_trials,)` float64              |
+| `waveform_fs`    | float (Hz)                                    |
+| `n_trials`       | int                                           |
+| `stim_window`    | `(onset, end)` tuple of float seconds         |
+| `stim_frequency` | float \| None                                 |
+| `metadata`       | dict                                          |
 
 Attributes used downstream:
 
 - ✓ `SortingData.n_spikes`
 - ✓ `SortingData.stim_window`
-- ✓ `SortingData.stimulus_duration` (must equal `stim_window[1]`)
+- ✓ `SortingData.stimulus_duration` (must equal `stim_window[1] - stim_window[0]`)
 
 ### `SortingResult`
 
