@@ -25,11 +25,14 @@ jobs:
           git config --global \
             url."https://x-access-token:${UPSTREAM_REPO_TOKEN}@github.com/".insteadOf \
             "https://github.com/"
-      # Install sibling packages from git until they're published to PyPI.
-      # Once visioniceio and neural-cca are on PyPI, drop these two lines
-      # (and the git-config step above) — `pip install -e ".[test]"` will
-      # then pull them automatically.
-      - run: pip install "visioniceio @ git+https://github.com/VisionICeNatal/VisionICeIO.git@main"
-      - run: pip install "neural-cca @ git+https://github.com/goecidbn/neural_cca.git@main"
+      # Sibling packages pinned to specific commit SHAs (not @main) so
+      # upstream churn on unrelated PRs cannot flap CI. Bumping a pin
+      # is a deliberate act tied to re-verifying CROSS_CHECKS.md against
+      # the new upstream — see docs/developer.rst → "Upstream
+      # version-pin policy". Once both are on PyPI, drop these two
+      # lines (and the git-config step above) — `pip install -e ".[test]"`
+      # will then pull them automatically.
+      - run: pip install "visioniceio @ git+https://github.com/VisionICeNatal/VisionICeIO.git@63bb74ac1fd473bbd2e9750eb8d4f70964af7538"
+      - run: pip install "neural-cca @ git+https://github.com/goecidbn/neural_cca.git@86fe9426ec06d8974262a6200176217125a3d57a"
       - run: pip install -e ".[test]"
       - run: pytest --cov=vision_ice_analysis --cov-report=term-missing

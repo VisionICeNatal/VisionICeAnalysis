@@ -140,6 +140,18 @@ Widening either bound is a release-blocking action: re-verify
 ``CROSS_CHECKS.md`` against the new upstream, then update the pin
 and the changelog in the same commit.
 
+The CI workflows (``.github/workflows/{tests,docs}.yml``)
+additionally pin ``visioniceio`` and ``neural-cca`` to specific
+commit SHAs — neither package is on PyPI yet, and a plain
+``git+https://...@main`` install would expose CI to upstream churn
+on unrelated PRs. Bumping a workflow SHA is part of the
+upstream-upgrade workflow: re-verify ``CROSS_CHECKS.md`` against
+the new SHA, then update both workflow files (keep them in sync)
+and the changelog in the same commit. The user-facing install
+snippets in ``README.md`` and ``CROSS_CHECKS.md`` deliberately
+stay on ``@main`` — those exist to track latest, not for CI
+determinism. This pin disappears once both upstreams are on PyPI.
+
 Release Checklist
 -----------------
 

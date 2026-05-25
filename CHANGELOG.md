@@ -6,13 +6,20 @@ versioning follows [SemVer](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
-_Nothing yet._
+### Changed
+- `.github/workflows/{tests,docs}.yml` now pin `visioniceio` and
+  `neural-cca` to specific commit SHAs (`63bb74a` and `86fe942`
+  respectively) instead of `@main`. Upstream churn on unrelated PRs
+  can no longer flap CI; bumping a SHA is now a deliberate act tied
+  to re-running `CROSS_CHECKS.md` against the new upstream (see
+  `docs/developer.rst` → *Upstream version-pin policy*). At pin time
+  the upstreams resolve to `visioniceio 0.1.0` and `neural-cca 0.1.2`,
+  both within the `>=0.1,<0.2` `pyproject.toml` bound. The user-facing
+  install recipes in `README.md` and `CROSS_CHECKS.md` deliberately
+  stay on `@main` — those exist to track latest, not for CI
+  determinism.
 
 ### Known issues (carried forward)
-- `.github/workflows/{tests,docs}.yml` install `visioniceio` and
-  `neural-cca` from `@main` rather than a pinned tag/commit. A
-  deliberate temporary workaround until both are on PyPI — upstream
-  churn can break CI on unrelated PRs.
 - `visioniceio` does not yet publish a Sphinx site; intersphinx
   mapping for it is staged in `docs/conf.py` but commented out, and
   cross-references to it render as plain literals.
