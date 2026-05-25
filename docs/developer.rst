@@ -159,12 +159,13 @@ Release Checklist
    are released first.
 2. Re-verify ``CROSS_CHECKS.md`` against the upstream versions you are
    pinning against.
-3. Update the version in ``pyproject.toml`` (``__init__.py`` reads it
-   dynamically via ``importlib.metadata``). Also bump the
-   ``__version__`` fallback string in
-   ``vision_ice_analysis/__init__.py`` so a source-checkout import
-   (no ``pip install``) reports the correct release rather than a
-   stale value.
+3. Update the version in ``pyproject.toml``. This is the single
+   canonical source of truth: ``vision_ice_analysis/__init__.py``
+   reads it at runtime via ``importlib.metadata.version`` (with a
+   regex fallback that parses ``pyproject.toml`` directly when the
+   package is on ``sys.path`` but not pip-installed); ``docs/conf.py``
+   uses the same pattern for the rendered docs version. No second
+   place needs bumping.
 4. Update upstream pins in ``pyproject.toml`` if you crossed a 0.x
    minor (see *Upstream version-pin policy* above).
 5. Roll ``CHANGELOG.md``: rename ``## [Unreleased]`` to

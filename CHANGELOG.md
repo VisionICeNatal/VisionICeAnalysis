@@ -64,10 +64,19 @@ versioning follows [SemVer](https://semver.org/spec/v2.0.0.html).
   install recipes in `README.md` and `CROSS_CHECKS.md` deliberately
   stay on `@main` — those exist to track latest, not for CI
   determinism.
-- ``vision_ice_analysis/__init__.py``: ``__version__`` fallback bumped
-  from ``"0.0.0"`` to ``"0.1.1"`` so a source-checkout import reports
-  the current release rather than a sentinel. Release Checklist in
-  ``docs/developer.rst`` extended with a step to keep this in sync.
+- ``vision_ice_analysis/__init__.py`` and ``docs/conf.py``: when the
+  package isn't pip-installed (source-checkout import / docs build),
+  ``__version__`` and the rendered docs version are now read from
+  ``pyproject.toml`` directly via a small regex parse, rather than a
+  hardcoded fallback. ``pyproject.toml`` is now the single source of
+  truth for the version; the Release Checklist no longer needs a
+  fallback-bump step.
+- Documentation site display title renamed from ``"VisionICeAnalysis"``
+  to ``"ICe Natal Standard Analysis"`` (Sphinx ``project`` in
+  ``docs/conf.py``, ``index.rst`` H1, ``conf.py`` module docstring).
+  The Python package identity stays unchanged
+  (``vision_ice_analysis`` import, ``vision-ice-analysis`` on PyPI,
+  README/prose mentions of the code package).
 
 ### Documentation
 - ``CROSS_CHECKS.md``: added a batch of cross-check items, two new

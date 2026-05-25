@@ -1,4 +1,4 @@
-"""Sphinx configuration for VisionICeAnalysis."""
+"""Sphinx configuration for the ICe Natal Standard Analysis docs."""
 
 import sys
 from importlib.metadata import PackageNotFoundError
@@ -7,14 +7,33 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-project = "VisionICeAnalysis"
+# Docs site display title — drives the navbar (upper-left), the
+# browser tab <title>, and the page H1 fallback. Distinct from the
+# Python package identity (``vision_ice_analysis`` / ``vision-ice-analysis``)
+# which stays unchanged everywhere code references it.
+project = "ICe Natal Standard Analysis"
 copyright = "2025-2026, ICe Vision Lab"
 author = "ICe Vision Lab"
 
 try:
     release = pkg_version("vision-ice-analysis")
 except PackageNotFoundError:
-    release = "0.0.0"
+    # Source-checkout build (uncommon — CI installs the package first).
+    # Mirror the runtime fallback in ``vision_ice_analysis/__init__.py``:
+    # parse pyproject.toml directly so the rendered docs always show
+    # the canonical version.
+    import re
+
+    _pyproject = Path(__file__).resolve().parent.parent / "pyproject.toml"
+    try:
+        _m = re.search(
+            r'^version\s*=\s*"([^"]+)"',
+            _pyproject.read_text(encoding="utf-8"),
+            re.MULTILINE,
+        )
+        release = _m.group(1) if _m else "0.0.0"
+    except OSError:
+        release = "0.0.0"
 
 extensions = [
     "sphinx.ext.autodoc",

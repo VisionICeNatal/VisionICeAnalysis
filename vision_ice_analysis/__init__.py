@@ -17,14 +17,38 @@ so callers don't have to import from both upstream packages directly::
 
 from importlib.metadata import PackageNotFoundError, version
 
+
+def _read_version_from_pyproject() -> str:
+    """Fallback for source-checkout imports (no ``pip install``).
+
+    ``importlib.metadata.version()`` reads the installed package's
+    ``METADATA`` file, which is generated from ``pyproject.toml`` at
+    install time. When the package isn't installed at all, we parse
+    ``pyproject.toml`` directly so the version stays in sync with the
+    canonical source of truth instead of a hardcoded fallback that
+    would silently rot between releases.
+
+    Uses a regex rather than ``tomllib`` because ``tomllib`` is 3.11+
+    and the project targets Python ``>=3.10``. Anchored at line start
+    so unrelated ``*version`` keys (e.g. ``target-version``) are not
+    matched.
+    """
+    import re
+    from pathlib import Path
+
+    pyproject = Path(__file__).resolve().parent.parent / "pyproject.toml"
+    try:
+        text = pyproject.read_text(encoding="utf-8")
+    except OSError:
+        return "0.0.0"
+    m = re.search(r'^version\s*=\s*"([^"]+)"', text, re.MULTILINE)
+    return m.group(1) if m else "0.0.0"
+
+
 try:
     __version__ = version("vision-ice-analysis")
 except PackageNotFoundError:
-    # Reported when the package is on sys.path but not pip-installed
-    # (e.g. a source checkout without `pip install -e .`). Keep this
-    # string in sync with pyproject.toml — bump on every release; see
-    # docs/developer.rst → Release Checklist.
-    __version__ = "0.1.1"
+    __version__ = _read_version_from_pyproject()
 
 # Re-exports from neural_cca so the bridge is a single import surface
 # for typical end-to-end workflows. ``steps2degree`` is re-exported
