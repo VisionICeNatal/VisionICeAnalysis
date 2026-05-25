@@ -19,9 +19,7 @@ from visioniceio import Experiment, read_spike_new, write_ssort
 try:
     from neural_cca import SortingData, SortingResult
 except ImportError as e:  # pragma: no cover - exercised only when dep missing
-    raise ImportError(
-        "neural_cca must be installed. Run: pip install neural-cca"
-    ) from e
+    raise ImportError("neural_cca must be installed. Run: pip install neural-cca") from e
 
 
 def load_from_visioniceio(
@@ -235,9 +233,7 @@ def export_ssort(
                         f"spike file has {n_spikes} spikes, "
                         f"sorting result has {end - start}"
                     )
-                rec_labels = np.asarray(
-                    result.cluster_labels[start:end], dtype=np.int32
-                )
+                rec_labels = np.asarray(result.cluster_labels[start:end], dtype=np.int32)
             else:
                 rec_labels = np.zeros(n_spikes, dtype=np.int32)
 
@@ -293,7 +289,5 @@ def batch_sort_experiment(
     try:
         from neural_cca.sorting.batch import batch_sort_experiment as _batch
     except ImportError as e:  # pragma: no cover - exercised only when dep missing
-        raise ImportError(
-            "neural_cca must be installed. Run: pip install neural-cca"
-        ) from e
+        raise ImportError("neural_cca must be installed. Run: pip install neural-cca") from e
     return _batch(data_source, name, **kwargs)
