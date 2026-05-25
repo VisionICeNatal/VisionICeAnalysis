@@ -6,6 +6,29 @@ versioning follows [SemVer](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+_Nothing yet._
+
+### Known issues (carried forward)
+- `.github/workflows/{tests,docs}.yml` install `visioniceio` and
+  `neural-cca` from `@main` rather than a pinned tag/commit. A
+  deliberate temporary workaround until both are on PyPI — upstream
+  churn can break CI on unrelated PRs.
+- `visioniceio` does not yet publish a Sphinx site; intersphinx
+  mapping for it is staged in `docs/conf.py` but commented out, and
+  cross-references to it render as plain literals.
+- `actions/deploy-pages@v4` returns HTTP 404 because GitHub Pages is
+  not enabled on the (private) repo — Pages on a private repo
+  requires a paid GitHub plan and the source set to
+  *GitHub Actions*. The docs *build* succeeds; only the deploy step
+  fails. Acceptable until Pages is enabled or the repo goes public.
+- No integration test runs `load_from_visioniceio` →
+  `run_sorting_pipeline` against a real or synthetic experiment.
+  Smoke tests catch import-shape regressions only; semantic drift in
+  upstream xarray dim names or NaN-padding sentinel goes undetected
+  until the first real-data run.
+
+## [v0.1.1] — 2026-05-25
+
 ### Removed
 - **`export_ssort`** public function (and its dependent imports
   `read_spike_new`, `write_ssort`, `SortingResult` in

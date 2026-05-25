@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "vision-ice-analysis"
-version = "0.1.0"
+version = "0.1.1"
 description = "End-to-end spike sorting workflows for ICe Vision Lab recordings"
 readme = "README.md"
 requires-python = ">=3.10"
