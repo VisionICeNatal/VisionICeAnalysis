@@ -4,13 +4,13 @@ Developer Guide
 Setting up a Development Environment
 -------------------------------------
 
-VisionICeAnalysis depends on both ``visioniceio`` and ``mini-analysis-cidbn``.
+VisionICeAnalysis depends on both ``visioniceio`` and ``neural-cca``.
 For development, install all three packages in editable mode::
 
     # Clone all three repos
-    git clone https://github.com/ice-vision-lab/VisionICeIO.git
-    git clone https://github.com/ice-vision-lab/mini-analysis-cidbn.git
-    git clone https://github.com/ice-vision-lab/VisionICeAnalysis.git
+    git clone https://github.com/VisionICeNatal/VisionICeIO.git
+    git clone https://github.com/goecidbn/neural_cca.git
+    git clone https://github.com/VisionICeNatal/VisionICeAnalysis.git
 
     # Create a shared venv
     python -m venv .venv
@@ -18,7 +18,7 @@ For development, install all three packages in editable mode::
 
     # Install dependencies in editable mode
     pip install -e ./VisionICeIO
-    pip install -e "./mini-analysis-cidbn[all]"
+    pip install -e "./neural_cca[all]"
     pip install -e "./VisionICeAnalysis[test,docs,dev]"
 
 This ensures that changes to the I/O or analysis packages are immediately
@@ -37,7 +37,7 @@ Run with coverage::
     pytest --cov=vision_ice_analysis --cov-report=term-missing
 
 Integration tests require real recording data in the DLTG format.
-Unit tests should use synthetic data generated via ``mini-analysis-cidbn``
+Unit tests should use synthetic data generated via ``neural-cca``
 helper functions (see its developer guide).
 
 Linting and Formatting
@@ -59,8 +59,8 @@ Build locally::
     make html
 
 The Sphinx configuration includes ``intersphinx`` mappings to both
-``visioniceio`` and ``mini-analysis-cidbn`` docs, so cross-references
-resolve automatically when those docs are published.
+``visioniceio`` and ``neural_cca`` docs, so cross-references resolve
+automatically when those docs are published.
 
 Adding a New Pipeline
 ---------------------
@@ -69,7 +69,7 @@ Pipeline functions live in ``vision_ice_analysis/pipelines.py``.
 Follow this pattern:
 
 1. Import from ``visioniceio`` for data loading and from
-   ``mini_analysis_cidbn`` for analysis functions.
+   ``neural_cca`` for analysis functions.
 2. Wrap the pipeline in a single function with clear input/output types.
 3. Use lazy imports (``try/except ImportError``) for any optional dependencies.
 4. Add a corresponding example in ``examples/``.
@@ -78,7 +78,7 @@ Follow this pattern:
 Release Checklist
 -----------------
 
-1. Ensure compatible versions of ``visioniceio`` and ``mini-analysis-cidbn``
+1. Ensure compatible versions of ``visioniceio`` and ``neural-cca``
    are released first.
 2. Update the version in ``vision_ice_analysis/__init__.py``.
 3. Update dependency version pins in ``pyproject.toml`` if needed.

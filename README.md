@@ -1,8 +1,8 @@
 # VisionICeAnalysis
 
 End-to-end spike sorting workflows for ICe Vision Lab recordings.
-Bridges [VisionICeIO](https://github.com/ice-vision-lab/VisionICeIO)
-(data loading) and [mini-analysis-cidbn](https://github.com/ice-vision-lab/mini-analysis-cidbn)
+Bridges [VisionICeIO](https://github.com/VisionICeNatal/VisionICeIO)
+(data loading) and [neural_cca](https://github.com/goecidbn/neural_cca)
 (processing) into convenient pipelines.
 
 ## Installation
@@ -11,12 +11,16 @@ Bridges [VisionICeIO](https://github.com/ice-vision-lab/VisionICeIO)
 pip install vision-ice-analysis
 ```
 
-This automatically installs `visioniceio` and `mini-analysis-cidbn`.
+This automatically installs `visioniceio` and `neural-cca`.
 
 ## Quick Start
 
 ```python
-from vision_ice_analysis import load_from_visioniceio, batch_sort_experiment
+from vision_ice_analysis import (
+    load_from_visioniceio,
+    run_sorting_pipeline,
+    export_ssort,
+)
 
 # Load a single electrode
 data = load_from_visioniceio(
@@ -26,20 +30,37 @@ data = load_from_visioniceio(
 )
 
 # Run sorting pipeline on it
-from mini_analysis_cidbn import run_sorting_pipeline
 result = run_sorting_pipeline(data)
 
-# Or batch-sort all electrodes at once
+# Export per-electrode SortingResults back to a .ssort file
+results = {0: result}            # add more electrodes as you sort them
+export_ssort("/path/to/experiment", "c5607a07", results)
+```
+
+For a zarr-backed summary across all electrodes (no per-spike labels),
+use `batch_sort_experiment`:
+
+```python
+from vision_ice_analysis import batch_sort_experiment
+
 summary = batch_sort_experiment(
     data_source="/path/to/experiment",
     name="c5607a07",
 )
 ```
 
+`batch_sort_experiment` writes a consolidated `_sorted.zarr` store and
+returns a dict with `result_path`, `n_electrodes_processed`,
+`n_clusters_total`, and per-electrode quality `summary`. It does **not**
+return per-spike `cluster_labels`, so its output cannot be chained
+directly into `export_ssort` — use the per-electrode
+`run_sorting_pipeline` loop above for `.ssort` export.
+
 ## Related Packages
 
-- [VisionICeIO](https://github.com/ice-vision-lab/VisionICeIO) — Pure I/O for LabView data
-- [mini-analysis-cidbn](https://github.com/ice-vision-lab/mini-analysis-cidbn) — Core analysis functions
+- [VisionICeIO](https://github.com/VisionICeNatal/VisionICeIO) — Pure I/O for LabView data
+- [neural-cca](https://github.com/goecidbn/neural_cca) — Core analysis functions
+  (spike sorting, STA, tuning)
 
 ## License
 

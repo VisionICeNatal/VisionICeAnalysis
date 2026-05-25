@@ -14,9 +14,9 @@ authors = [{name = "ICe Vision Lab"}]
 keywords = ["neuroscience", "spike-sorting", "pipeline", "electrophysiology"]
 
 dependencies = [
-    "mini-analysis-cidbn>=0.1",
+    "neural-cca>=0.1",
     "numpy",
-    "visioniceio>=0.3",
+    "visioniceio>=0.1",
 ]
 
 [project.optional-dependencies]
@@ -25,8 +25,8 @@ docs = ["sphinx>=6.0", "pydata-sphinx-theme>=0.14", "sphinx-design", "numpydoc"]
 dev = ["ruff>=0.4"]
 
 [project.urls]
-Repository = "https://github.com/ice-vision-lab/VisionICeAnalysis"
-Documentation = "https://ice-vision-lab.github.io/VisionICeAnalysis/"
+Repository = "https://github.com/VisionICeNatal/VisionICeAnalysis"
+Documentation = "https://VisionICeNatal.github.io/VisionICeAnalysis/"
 
 [tool.ruff]
 line-length = 100
