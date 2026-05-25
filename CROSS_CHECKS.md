@@ -59,8 +59,8 @@ on:
 
 - Field `cluster_labels` — order **must match** the trial-major,
   NaN-filtered order produced by `load_from_visioniceio` (see
-  *Round-trip invariants* below). This was previously named `labels`;
-  a silent rename back will not raise.
+  *File-format invariants* under ``visioniceio`` below). This was
+  previously named `labels`; a silent rename back will not raise.
 
 ### `steps2degree`
 
@@ -154,20 +154,27 @@ Mismatches between import name and PyPI name are easy to break in
 | `vision_ice_analysis`  | `vision-ice-analysis`            |
 
 `__init__.py` reads its own version with
-`version("vision-ice-analysis")`; the distribution name is also what
-`.github/workflows/*.yml` install from git.
+`version("vision-ice-analysis")`; the distribution names are also what
+`.github/workflows/{tests,docs}.yml` install from git
+(`lint.yml` only installs ruff).
 
 ---
 
 ## How to run the cross-check
 
-After bumping either upstream:
+After bumping either upstream — neither package is on PyPI yet, so
+mirror the git-install dance from `README.md` and the CI workflows:
 
 ```bash
-pip install -U neural-cca visioniceio
+pip install --force-reinstall \
+  "visioniceio @ git+https://github.com/VisionICeNatal/VisionICeIO.git@main" \
+  "neural-cca @ git+https://github.com/goecidbn/neural_cca.git@main"
 pip install -e ".[test]"
 pytest
 ```
+
+(Once both are on PyPI this collapses to
+``pip install -U neural-cca visioniceio && pip install -e ".[test]" && pytest``.)
 
 That covers every **✓** above. For the unmarked items, the cheapest
 verification is to load one real experiment end-to-end:

@@ -31,7 +31,9 @@ exclude_patterns = ["_build", "**.ipynb_checkpoints"]
 autosummary_generate = True
 
 # Wrap any autodoc signature longer than this onto one parameter per line.
-# Matches PEP 8 hard-wrap. Requires Sphinx >= 7.1.
+# 88 matches the Black / Ruff default; deliberately tighter than this
+# project's source line-length (100) to wrap aggressively in rendered docs.
+# Requires Sphinx >= 7.1.
 maximum_signature_line_length = 88
 
 html_theme = "pydata_sphinx_theme"

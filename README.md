@@ -55,8 +55,10 @@ returns a dict with `result_path`, `n_electrodes_processed`,
 include per-spike `cluster_labels`; use the per-electrode
 `run_sorting_pipeline` loop above when you need those.
 
-`.ssort` export lives in `visioniceio` itself — see its docs for the
-writer API.
+`.ssort` export is being moved into `visioniceio` itself (as
+`save_ssort` / `write_ssort`). Until that upstream writer lands, no
+`.ssort` round-trip is available through this bridge; see
+[`CROSS_CHECKS.md`](CROSS_CHECKS.md) for the re-wire checklist.
 
 ## Related Packages
 

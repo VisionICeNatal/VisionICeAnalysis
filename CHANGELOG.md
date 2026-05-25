@@ -112,6 +112,16 @@ versioning follows [SemVer](https://semver.org/spec/v2.0.0.html).
 - `examples/example_full_pipeline.ipynb`: retitled to *"Quickstart
   Sanity Check"* — the cells assert imports load; the pipeline
   examples are commented templates, not executable demos.
+- Consistency pass across `README.md`, `docs/workflows.rst`, and
+  `CROSS_CHECKS.md`: aligned the `.ssort` "pending upstream" wording
+  (it had drifted into "see upstream docs" — but neither the docs
+  site nor the writer API exists yet); fixed a broken
+  `Round-trip invariants` xref in `CROSS_CHECKS.md` (now points at
+  `File-format invariants`); rewrote the post-upstream-bump install
+  recipe to use git installs (matching `README.md` + workflows);
+  tightened the `*.yml install from git` claim to name only the two
+  workflows that actually do. Corrected the `maximum_signature_line_length`
+  comment in `docs/conf.py` (88 is Black/Ruff, not PEP 8).
 
 ### Known issues (carried forward)
 - `.github/workflows/{tests,docs}.yml` install `visioniceio` and
