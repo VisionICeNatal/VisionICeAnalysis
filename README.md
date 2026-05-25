@@ -16,11 +16,7 @@ This automatically installs `visioniceio` and `neural-cca`.
 ## Quick Start
 
 ```python
-from vision_ice_analysis import (
-    load_from_visioniceio,
-    run_sorting_pipeline,
-    export_ssort,
-)
+from vision_ice_analysis import load_from_visioniceio, run_sorting_pipeline
 
 # Load a single electrode
 data = load_from_visioniceio(
@@ -31,14 +27,9 @@ data = load_from_visioniceio(
 
 # Run sorting pipeline on it
 result = run_sorting_pipeline(data)
-
-# Export per-electrode SortingResults back to a .ssort file
-results = {0: result}            # add more electrodes as you sort them
-export_ssort("/path/to/experiment", "c5607a07", results)
 ```
 
-For a zarr-backed summary across all electrodes (no per-spike labels),
-use `batch_sort_experiment`:
+For a zarr-backed summary across all electrodes, use `batch_sort_experiment`:
 
 ```python
 from vision_ice_analysis import batch_sort_experiment
@@ -52,9 +43,11 @@ summary = batch_sort_experiment(
 `batch_sort_experiment` writes a consolidated `_sorted.zarr` store and
 returns a dict with `result_path`, `n_electrodes_processed`,
 `n_clusters_total`, and per-electrode quality `summary`. It does **not**
-return per-spike `cluster_labels`, so its output cannot be chained
-directly into `export_ssort` — use the per-electrode
-`run_sorting_pipeline` loop above for `.ssort` export.
+include per-spike `cluster_labels`; use the per-electrode
+`run_sorting_pipeline` loop above when you need those.
+
+`.ssort` export lives in `visioniceio` itself — see its docs for the
+writer API.
 
 ## Related Packages
 

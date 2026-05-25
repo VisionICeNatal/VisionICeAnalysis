@@ -30,8 +30,6 @@ templates_path = ["_templates"]
 exclude_patterns = ["_build", "**.ipynb_checkpoints"]
 autosummary_generate = True
 
-autodoc_mock_imports = ["numpy", "visioniceio", "neural_cca"]
-
 html_theme = "pydata_sphinx_theme"
 html_theme_options = {
     "github_url": "https://github.com/VisionICeNatal/VisionICeAnalysis",

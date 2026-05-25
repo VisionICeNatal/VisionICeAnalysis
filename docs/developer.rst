@@ -71,18 +71,45 @@ Follow this pattern:
 1. Import from ``visioniceio`` for data loading and from
    ``neural_cca`` for analysis functions.
 2. Wrap the pipeline in a single function with clear input/output types.
-3. Use lazy imports (``try/except ImportError``) for any optional dependencies.
+3. Both upstream packages are *hard* dependencies, so import them at
+   module top-level — do **not** wrap them in ``try/except ImportError``
+   (that wrapper is unreachable when the dep is required). Lazy imports
+   inside a function body are only justified when the symbol lives in
+   an upstream submodule that may not always be importable.
 4. Add a corresponding example in ``examples/``.
 5. Document the function with NumPy-style docstrings.
+6. Record every new symbol the bridge starts depending on in
+   ``CROSS_CHECKS.md`` (top-level repo file). That file is the
+   authoritative inventory of the upstream contract surface.
+
+Upstream Contract Checks
+------------------------
+
+The bridge has no analysis logic of its own — every public symbol is a
+wrapper around ``neural_cca`` or ``visioniceio``. The expected upstream
+surface is documented in `CROSS_CHECKS.md
+<https://github.com/VisionICeNatal/VisionICeAnalysis/blob/main/CROSS_CHECKS.md>`_
+at the repository root.
+
+Run ``pytest`` after any upstream bump; that exercises everything
+marked **✓** in ``CROSS_CHECKS.md``. The unmarked items are
+runtime-only and need one real experiment loaded end-to-end to
+verify.
 
 Release Checklist
 -----------------
 
 1. Ensure compatible versions of ``visioniceio`` and ``neural-cca``
    are released first.
-2. Update the version in ``vision_ice_analysis/__init__.py``.
-3. Update dependency version pins in ``pyproject.toml`` if needed.
-4. Run ``pytest``.
-5. Build: ``python -m build && twine check dist/*``.
-6. Tag: ``git tag v0.x.y && git push --tags``.
-7. Upload: ``twine upload dist/*``.
+2. Re-verify ``CROSS_CHECKS.md`` against the upstream versions you are
+   pinning against.
+3. Update the version in ``pyproject.toml`` (``__init__.py`` reads it
+   dynamically via ``importlib.metadata``).
+4. Update dependency version pins in ``pyproject.toml`` if needed.
+5. Roll ``CHANGELOG.md``: rename ``## [Unreleased]`` to
+   ``## [vX.Y.Z] — YYYY-MM-DD`` and open a fresh empty
+   ``## [Unreleased]`` section above it.
+6. Run ``pytest``.
+7. Build: ``python -m build && twine check dist/*``.
+8. Tag: ``git tag v0.x.y && git push --tags``.
+9. Upload: ``twine upload dist/*``.
