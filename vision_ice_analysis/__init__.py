@@ -56,9 +56,23 @@ except PackageNotFoundError:
 # in ``load_from_visioniceio`` (e.g. for 8-direction or non-Natal
 # experiments) and the bridge shouldn't force a `from neural_cca import`
 # for that case. See ``CROSS_CHECKS.md`` → *steps2degree / tlabel2angle*.
-from neural_cca import SortingData, SortingResult, run_sorting_pipeline, steps2degree
+#
+# E402 is intentional here: ``__version__`` must be resolved at import
+# time (PEP 8 / packaging convention), but it depends on
+# ``importlib.metadata`` + a pyproject fallback that has to evaluate
+# *before* any sibling-package imports.  Restructuring to satisfy
+# ruff would either lose the lazy fallback or hide ``__version__``
+# behind a function call, both of which break standard tooling
+# expectations (e.g. ``importlib.metadata.version(...)`` round-trips,
+# Sphinx ``release = pkg.__version__``).
+from neural_cca import (  # noqa: E402
+    SortingData,
+    SortingResult,
+    run_sorting_pipeline,
+    steps2degree,
+)
 
-from .pipelines import batch_sort_experiment, load_from_visioniceio
+from .pipelines import batch_sort_experiment, load_from_visioniceio  # noqa: E402
 
 __all__ = [
     "load_from_visioniceio",

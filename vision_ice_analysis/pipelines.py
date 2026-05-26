@@ -9,7 +9,8 @@ from __future__ import annotations
 import sys
 import warnings
 from datetime import datetime, timezone
-from importlib.metadata import PackageNotFoundError, version as _pkg_version
+from importlib.metadata import PackageNotFoundError
+from importlib.metadata import version as _pkg_version
 from pathlib import Path
 
 import numpy as np
@@ -114,8 +115,10 @@ def load_from_visioniceio(
             reproducibility. When ``None`` a fresh ~128-bit seed is
             drawn from OS entropy via ``SeedSequence()``. Callers
             should forward this same value to ``run_sorting_pipeline``
-            / ``batch_sort_experiment`` (once upstream supports the
-            kwarg — see ``CROSS_CHECKS.md`` → *Seed forwarding*).
+            via its ``rng=`` argument (upstream accepts
+            ``int | Generator | None``); the bridge's
+            :func:`batch_sort_experiment` does this translation
+            automatically when its own ``seed=`` is passed.
             Downstream RNG must be constructed as
             ``Generator(PCG64DXSM(SeedSequence(seed)))`` per the
             bridge's RNG policy (``CROSS_CHECKS.md`` → *RNG policy*);
@@ -265,12 +268,23 @@ def batch_sort_experiment(
             raw directories; ignored for zarr stores.
         seed: RNG seed forwarded to the upstream sorter for
             reproducible stochastic clustering. Required for
-            publishable runs. The exact upstream kwarg name (``seed``
-            vs ``random_state``) is tracked in ``CROSS_CHECKS.md`` →
-            *Seed forwarding*; if upstream uses a different name, set
-            it through ``**kwargs`` directly.
-        **kwargs: Forwarded to the upstream
-            ``neural_cca.sorting.batch.batch_sort_experiment``.
+            publishable runs. Translated to upstream ``rng=`` —
+            ``neural_cca.sorting.batch.batch_sort_experiment`` accepts
+            ``rng: Generator | int | None``, so passing an integer
+            seed there yields a reproducible
+            ``np.random.default_rng(seed)``-equivalent stream.  The
+            translation is done bridge-side so the bridge can keep
+            the friendlier ``seed=`` name (matching every other
+            ``load_from_visioniceio`` callsite) without leaking the
+            upstream-specific kwarg name onto callers.  Callers that
+            need a fully-seeded ``PCG64DXSM`` Generator (RNG policy in
+            ``CROSS_CHECKS.md``) should construct it explicitly and
+            pass ``rng=`` through ``**kwargs`` instead.
+        **kwargs: Forwarded verbatim to the upstream
+            ``neural_cca.sorting.batch.batch_sort_experiment``.  Upstream
+            additionally forwards any unrecognised keys to
+            ``run_sorting_pipeline`` per electrode, so options like
+            ``min_silhouette=`` or ``preprocess=`` can be set here.
 
     Returns:
         Summary ``dict`` with keys:
@@ -289,5 +303,10 @@ def batch_sort_experiment(
     from neural_cca.sorting.batch import batch_sort_experiment as _batch
 
     if seed is not None:
-        kwargs.setdefault("seed", seed)
+        # Translate the bridge-side ``seed=`` to the upstream's ``rng=``.
+        # Upstream accepts ``int | Generator | None``, so an int suffices
+        # and avoids materialising a Generator the bridge doesn't need.
+        # ``setdefault`` lets an explicit ``rng=`` in kwargs win over a
+        # default ``seed=`` (caller can mix the two when migrating code).
+        kwargs.setdefault("rng", seed)
     return _batch(data_source, name, **kwargs)

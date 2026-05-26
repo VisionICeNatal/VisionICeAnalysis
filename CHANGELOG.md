@@ -54,16 +54,26 @@ versioning follows [SemVer](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 - `.github/workflows/{tests,docs}.yml` now pin `visioniceio` and
-  `neural-cca` to specific commit SHAs (`63bb74a` and `86fe942`
-  respectively) instead of `@main`. Upstream churn on unrelated PRs
-  can no longer flap CI; bumping a SHA is now a deliberate act tied
-  to re-running `CROSS_CHECKS.md` against the new upstream (see
-  `docs/developer.rst` → *Upstream version-pin policy*). At pin time
-  the upstreams resolve to `visioniceio 0.1.0` and `neural-cca 0.1.2`,
-  both within the `>=0.1,<0.2` `pyproject.toml` bound. The user-facing
-  install recipes in `README.md` and `CROSS_CHECKS.md` deliberately
-  stay on `@main` — those exist to track latest, not for CI
-  determinism.
+  `neural-cca` to specific commit SHAs instead of `@main`. Upstream
+  churn on unrelated PRs can no longer flap CI; bumping a SHA is now
+  a deliberate act tied to re-running `CROSS_CHECKS.md` against the
+  new upstream (see `docs/developer.rst` → *Upstream version-pin
+  policy*). The pinned SHAs always correspond to a tagged release of
+  each upstream that satisfies the `>=0.1,<0.2` `pyproject.toml`
+  bound; the workflow file is the authoritative source for the
+  *current* pinned SHA / version (this changelog only records the
+  policy change, not each individual bump). The user-facing install
+  recipes in `README.md` and `CROSS_CHECKS.md` deliberately stay on
+  `@main` — those exist to track latest, not for CI determinism.
+- Bridge `batch_sort_experiment` now translates its bridge-side
+  ``seed=`` kwarg to the upstream's ``rng=`` kwarg
+  (``neural_cca.sorting.batch.batch_sort_experiment`` accepts
+  ``int | Generator | None``) and forwards any other ``**kwargs``
+  verbatim. Previous behaviour passed ``seed=`` through directly,
+  which raised ``TypeError`` because upstream has no ``seed=`` arg.
+  Bridge-side translation keeps the friendlier ``seed=`` name aligned
+  with the rest of the bridge surface and avoids leaking upstream
+  kwarg renames into callers.
 - ``vision_ice_analysis/__init__.py`` and ``docs/conf.py``: when the
   package isn't pip-installed (source-checkout import / docs build),
   ``__version__`` and the rendered docs version are now read from
