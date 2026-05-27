@@ -21,7 +21,7 @@ docs/_build/
 .venv/
 venv/
 
-
+CLAUDE.md
 .claude/
 warnings_sphinx_build.txt
 
