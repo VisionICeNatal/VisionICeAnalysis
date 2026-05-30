@@ -14,8 +14,13 @@ from __future__ import annotations
 import numpy as np
 import pytest
 import xarray as xr
+from neural_cca import make_rng
 
-from vision_ice_analysis import batch_sort_experiment
+from vision_ice_analysis import (
+    batch_sort_experiment,
+    load_from_visioniceio,
+    run_sorting_pipeline,
+)
 
 
 def _make_synthetic_zarr(
@@ -33,7 +38,7 @@ def _make_synthetic_zarr(
     valid spikes per (electrode, trial), and a trailing all-NaN spike
     slot per cell so the coupled NaN mask has padding to drop.
     """
-    rs = np.random.RandomState(0)
+    rs = make_rng(0)  # PCG64DXSM Generator (RNG policy)
     wv = np.full((n_elec, n_trials, max_spikes, snippet), np.nan, dtype=np.float64)
     st = np.full((n_elec, n_trials, max_spikes), np.nan, dtype=np.float64)
     t = np.linspace(0.0, 1.0, snippet)
@@ -42,7 +47,7 @@ def _make_synthetic_zarr(
     for e in range(n_elec):
         for tr in range(n_trials):
             for s in range(n_valid):
-                wv[e, tr, s, :] = tmpl[s % 2] + 0.1 * rs.randn(snippet)
+                wv[e, tr, s, :] = tmpl[s % 2] + 0.1 * rs.standard_normal(snippet)
                 st[e, tr, s] = rs.uniform(0.6, 2.4)
 
     coords_full = {
@@ -135,3 +140,22 @@ def test_batch_missing_source_raises(tmp_path):
             stim_window=(0.5, 2.5),
             n_angle_steps=4,
         )
+
+
+def test_recorded_seed_replays_through_pipeline(tmp_path):
+    """C2 regression: the ~128-bit master seed ``load_from_visioniceio``
+    records in ``provenance`` must replay through ``run_sorting_pipeline``
+    reproducibly. Before neural_cca 0.3.0's ``_as_seed`` fix, forwarding
+    that seed raised ``InvalidParameterError`` in sklearn — so the
+    recorded seed could not actually reproduce the run.
+    """
+    src = _make_synthetic_zarr(tmp_path / "exp.zarr")
+    data = load_from_visioniceio(src, name="exp", electrode=0, stim_window=(0.5, 2.5))
+
+    seed = data.metadata["provenance"]["seed"]
+    assert seed.bit_length() > 32  # a full-entropy master, not a uint32
+
+    r1 = run_sorting_pipeline(data, rng=seed, plot=False, compute_os=False)
+    r2 = run_sorting_pipeline(data, rng=seed, plot=False, compute_os=False)
+    assert len(r1.cluster_labels) == data.n_spikes
+    assert np.array_equal(r1.cluster_labels, r2.cluster_labels)

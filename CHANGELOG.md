@@ -6,6 +6,30 @@ versioning follows [SemVer](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.1.3] - 2026-05-30
+
+### Changed
+- Repin to `neural_cca` **v0.3.0**: widen the dependency to
+  `neural-cca>=0.3,<0.4` and bump the CI SHA pins in
+  `.github/workflows/{tests,docs}.yml` to the v0.3.0 commit
+  (`5072d19`). 0.3.0's `_as_seed` fix makes the ~128-bit master seed
+  this bridge records in `provenance` replayable through
+  `run_sorting_pipeline` (it previously raised `InvalidParameterError`
+  in sklearn). Crosses a 0.x minor; `CROSS_CHECKS.md` re-verified.
+
+### Added
+- `tests/test_batch.py::test_recorded_seed_replays_through_pipeline` —
+  the C2 regression: a seed minted by `load_from_visioniceio` must
+  round-trip through `run_sorting_pipeline` reproducibly.
+- `tests/test_rng_policy.py`: AST guard failing CI if bridge package
+  code uses `default_rng` / `RandomState` / legacy `np.random` / plain
+  `PCG64`. ruff `NPY002` enabled.
+
+### Fixed
+- `tests/test_batch.py` synthetic fixture now uses a `PCG64DXSM`
+  `Generator` (`neural_cca.make_rng`) instead of `RandomState`, per the
+  RNG policy.
+
 ## [0.1.2] - 2026-05-30
 
 ### Changed
