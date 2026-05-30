@@ -38,7 +38,7 @@ required-arg change breaks tests immediately.
 | ---------------- | --------------------------------------------- |
 | `waveforms`      | `np.ndarray (n_spikes, snippet_len)` float64  |
 | `spike_times`    | `np.ndarray (n_spikes,)` float64 (**seconds**, see *Spike-time units* below) |
-| `trials`         | `np.ndarray (n_spikes,)` int64 (origin TBD, see *Trial-index origin* below) |
+| `trials`         | `np.ndarray (n_spikes,)` int64 (**0-based**, see *Trial-index origin* below) |
 | `angles`         | `np.ndarray (n_trials,)` float64 (degrees, 0-360)      |
 | `waveform_fs`    | float (Hz)                                    |
 | `n_trials`       | int                                           |
@@ -65,7 +65,8 @@ on:
 
 ### `steps2degree` / `tlabel2angle`
 
-- Signature: `steps2degree(n: int) -> dict[int, float]`
+- Signature: `steps2degree(n_steps: int) -> dict[int, float]` (the
+  parameter is named `n_steps`, so a keyword call must use that name)
 - `steps2degree(12)` must equal `{i: (i - 1) * 30.0 for i in range(1, 13)}`
   (1-based keys, 30° spacing, starts at 0°). This is the default
   ``tlabel2angle`` argument in
@@ -217,27 +218,22 @@ Used in [`pipelines.load_from_visioniceio`](vision_ice_analysis/pipelines.py):
      and padded "spikes" leak into clustering. A defensive
      post-filter ``assert not np.isnan(...).any()`` would catch the
      drift on the first run.
-- **Spike-time units.** ``exp.spike_times.values`` is consumed by the
-  bridge and passed unchanged into ``SortingData.spike_times``;
-  downstream ``neural_cca`` compares against ``stim_window`` which is
-  documented in **seconds**. Confirm with each upstream release that
-  the values are in seconds (relative to trial start, matching
-  ``stim_window``'s frame of reference). The most common alternative
-  is sample-frames (the SpikeInterface default); that convention
-  would cause a silent ~``waveform_fs``-fold mismatch against
-  ``stim_window`` and the gate would let every spike through. Once
-  upstream pins the convention, the bridge will add a defensive
-  sanity assertion (``assert spike_times.max() <= stim_window[1] * c``
-  for some plausibility factor ``c``).
-- **Trial-index origin.** The bridge extracts per-spike trial indices
-  from ``wv.trials.values`` after
-  ``wv.stack(sidx_rec=("trials", "spikes_idx"))`` (see
-  [pipelines.py](vision_ice_analysis/pipelines.py) — search
-  ``trials = wv.trials.values``). ``exp.stim_label`` is documented as
-  1-based (above); confirm whether the xarray ``trials`` coordinate is
-  0- or 1-based. Any downstream consumer indexing back into
-  ``exp.stim_label`` from ``SortingData.trials`` relies on the two
-  using the **same** convention.
+- **Spike-time units.** ✅ **Confirmed: trial-relative seconds,
+  float64.** ``visioniceio._pad_spike_times`` stores
+  ``sample_index / SpikeSamplingFrequency`` as float64 (seconds from
+  trial start), matching ``stim_window``'s frame of reference — not
+  sample-frames (the SpikeInterface default, which would cause a
+  silent ~``waveform_fs``-fold mismatch). A defensive
+  ``assert spike_times.max() <= stim_window[1] * c`` sanity check is
+  still worth adding bridge-side to catch a future upstream regression.
+- **Trial-index origin.** ✅ **Confirmed: 0-based.** ``visioniceio``
+  builds the ``trials`` coordinate as ``np.arange(ntrials)``
+  (``experiment.py``), so the per-spike trial indices extracted by
+  ``_extract_electrode_arrays`` (in
+  [pipelines.py](vision_ice_analysis/pipelines.py)) are 0-based and
+  index directly into the 0-based ``angles`` array. (Stimulus
+  *labels* — the values in ``stim_label`` — are separately 1-based;
+  the *coordinate* is 0-based.)
 - **Trial-major spike order.** After
   `wv.stack(sidx_rec=("trials", "spikes_idx"))`, iteration is
   trial-major within each electrode. Any downstream consumer that

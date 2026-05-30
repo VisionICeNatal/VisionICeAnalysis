@@ -90,7 +90,7 @@ def test_batch_end_to_end_writes_summary_and_store(tmp_path):
         n_angle_steps=4,
         seed=0,
         compute_tuning=False,  # keep the assertion fast + deterministic
-        compute_sta=True,
+        compute_spike_train_stats=True,
     )
 
     # Documented summary schema (CROSS_CHECKS.md → batch_sort_experiment).

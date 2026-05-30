@@ -490,7 +490,7 @@ def batch_sort_experiment(
     stim_frequency: float | None = None,
     waveform_fs: float | None = None,
     refractory_period: float = 0.001,
-    compute_sta: bool = True,
+    compute_spike_train_stats: bool = True,
     compute_tuning: bool = True,
     seed: int | None = None,
     **pipeline_kwargs,
@@ -538,7 +538,9 @@ def batch_sort_experiment(
         waveform_fs: Waveform sampling rate (Hz).  ``None`` reads it
             from the experiment metadata.
         refractory_period: Refractory period for RPV computation (s).
-        compute_sta: Compute per-cluster spike-train statistics.
+        compute_spike_train_stats: Compute per-cluster spike-train
+            statistics (MFR / CV / LvR). Renamed from ``compute_sta``;
+            ``sta`` now denotes spike-triggered average upstream.
         compute_tuning: Compute per-cluster orientation selectivity.
             When ``False``, unmapped stimulus labels are tolerated.
         seed: RNG seed for reproducible stochastic clustering.
@@ -557,7 +559,7 @@ def batch_sort_experiment(
             ``n_electrodes_processed`` — count of successful electrodes.
             ``n_clusters_total`` — total clusters across all electrodes.
             ``summary`` — per-electrode dict with ``quality``,
-            ``n_clusters``, ``n_spikes``, and optional ``sta_metrics`` /
+            ``n_clusters``, ``n_spikes``, and optional ``spike_train_metrics`` /
             ``os_metrics``.
 
     Raises:
@@ -654,12 +656,13 @@ def batch_sort_experiment(
             )
 
             # --- Spike-train statistics per cluster ---
-            sta_metrics: dict[int, dict] | None = None
-            if compute_sta:
-                sta_metrics = {}
+            spike_train_metrics: dict[int, dict] | None = None
+            if compute_spike_train_stats:
+                spike_train_metrics = {}
                 for cl in np.unique(result.cluster_labels):
-                    sta_metrics[int(cl)] = minimal_spike_train_analysis(
+                    spike_train_metrics[int(cl)] = minimal_spike_train_analysis(
                         spike_times,
+                        trials=trials_arr,  # within-trial ISIs only (no cross-trial pseudo-ISIs)
                         cluster_labels=result.cluster_labels,
                         cluster_id=int(cl),
                         refractory_period=refractory_period,
@@ -691,7 +694,7 @@ def batch_sort_experiment(
                 {
                     "electrode": elec,
                     "result": result,
-                    "sta_metrics": sta_metrics,
+                    "spike_train_metrics": spike_train_metrics,
                     "fr_by_trial": fr_by_trial,
                     "st_by_trial": st_by_trial,
                 }
@@ -702,8 +705,8 @@ def batch_sort_experiment(
                 "quality": result.quality,
                 "n_spikes": len(waveforms),
             }
-            if sta_metrics:
-                elec_summary["sta_metrics"] = sta_metrics
+            if spike_train_metrics:
+                elec_summary["spike_train_metrics"] = spike_train_metrics
             if result.os_metrics:
                 elec_summary["os_metrics"] = result.os_metrics
             summary[elec] = elec_summary

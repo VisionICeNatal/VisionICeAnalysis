@@ -6,6 +6,23 @@ versioning follows [SemVer](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Changed
+- **BREAKING — `batch_sort_experiment`: `compute_sta` →
+  `compute_spike_train_stats`, and the summary key `sta_metrics` →
+  `spike_train_metrics`.** The old name predated the upstream
+  `sta`→`spike_train` rename (`sta` now denotes spike-triggered
+  average); the toggle computes spike-*train* statistics (MFR/CV/LvR).
+
+### Fixed
+- `batch_sort_experiment` now passes `trials=` to
+  `minimal_spike_train_analysis`, so per-cluster CV / LvR / refractory
+  stats use **within-trial** ISIs instead of globally-sorted spike
+  times (which mixed in cross-trial pseudo-ISIs).
+- `CROSS_CHECKS.md`: corrected the `steps2degree` signature (`n_steps`,
+  not `n`) and closed the now-answerable open questions (spike-time
+  units = trial-relative seconds / float64; trial-index origin =
+  0-based).
+
 ## [0.1.3] - 2026-05-30
 
 ### Changed
