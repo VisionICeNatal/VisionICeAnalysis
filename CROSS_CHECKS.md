@@ -22,9 +22,10 @@ Failure to import any of these breaks `import vision_ice_analysis`.
 - ✓ `from neural_cca import SortingResult`
 - ✓ `from neural_cca import run_sorting_pipeline`
 - ✓ `from neural_cca import steps2degree`
-- `from neural_cca.sorting.batch import batch_sort_experiment` *(lazy
-  import inside `pipelines.batch_sort_experiment`; not loaded until
-  first call)*
+- ✓ `from neural_cca import minimal_spike_train_analysis` *(eager
+  import in `pipelines.py`; any import failure breaks
+  `import vision_ice_analysis`, so every test covers it; exercised
+  functionally by `tests/test_batch.py`)*
 
 ### `SortingData` constructor
 
@@ -112,8 +113,9 @@ to match.
 
 ### OSI / DSI formula
 
-`neural_cca.sorting.batch.batch_sort_experiment` returns per-cluster
-tuning metrics in its `summary` dict. Confirm:
+`run_sorting_pipeline` returns per-cluster tuning metrics in
+`SortingResult.os_metrics`, which the bridge's `batch_sort_experiment`
+aggregates into its `summary` dict. Confirm:
 
 - Which formula is used for OSI / DSI. The legacy peak-orthogonal
   formula ``(R_pref − R_orth) / (R_pref + R_orth)`` produces
@@ -126,16 +128,22 @@ tuning metrics in its `summary` dict. Confirm:
 
 ### Seed forwarding for reproducible sorting
 
-The bridge generates a 64-bit RNG seed in
+The bridge generates a ~128-bit RNG seed in
 [`pipelines.load_from_visioniceio`](vision_ice_analysis/pipelines.py)
 and records it into ``SortingData.metadata['provenance']['seed']``.
 For end-to-end reproducibility, upstream must accept that seed:
 
-- Confirm the kwarg name used by ``run_sorting_pipeline`` and
-  ``neural_cca.sorting.batch.batch_sort_experiment`` (the bridge
-  currently forwards as ``seed`` in
-  [`pipelines.batch_sort_experiment`](vision_ice_analysis/pipelines.py);
-  if upstream uses ``random_state`` instead, adjust the bridge).
+- Confirm the kwarg name used by ``run_sorting_pipeline`` (the bridge
+  forwards its friendly ``seed=`` as ``rng=`` from both
+  ``load_from_visioniceio`` callers and the in-bridge
+  [`pipelines.batch_sort_experiment`](vision_ice_analysis/pipelines.py)
+  loop; if upstream renames ``rng`` to ``random_state``, adjust the
+  bridge).
+- **Known gap:** a ~128-bit ``SeedSequence().entropy`` seed is
+  rejected by scikit-learn (``random_state`` must fit in uint32) once
+  it reaches ``KMeans`` / ``PCA`` through upstream ``_as_seed``. Until
+  that is clamped, the *recorded* default seed cannot be replayed
+  verbatim — tracked separately from this batch relocation.
 - Confirm the seed is honoured by every stochastic step (k-means
   initialisation, silhouette sampling, train/test splits, any
   bootstrap CI).
@@ -148,13 +156,17 @@ pattern, ``np.random.Generator(np.random.PCG64DXSM(np.random.SeedSequence(seed))
 which mixes entropy properly from small-integer seeds and avoids
 PCG64's parallel-stream correlation (numpy/numpy#16313).
 
-### `batch_sort_experiment` (submodule)
+### `batch_sort_experiment` (bridge-owned, not an upstream symbol)
 
-- Import path: `neural_cca.sorting.batch.batch_sort_experiment`
-- Signature: `(data_source, name=None, **kwargs) -> dict`
-- Returned dict must contain keys `result_path`,
-  `n_electrodes_processed`, `n_clusters_total`, `summary` (per
-  `pipelines.batch_sort_experiment` docstring and `README.md`).
+`batch_sort_experiment` now lives entirely in the bridge
+([`pipelines.py`](vision_ice_analysis/pipelines.py)). It composes
+`Experiment` / zarr loading with `run_sorting_pipeline` +
+`minimal_spike_train_analysis` per electrode and writes the
+consolidated zarr summary, reusing the same coupled-mask electrode
+extraction (`_extract_electrode_arrays`) as `load_from_visioniceio`.
+Its return-dict schema (`result_path`, `n_electrodes_processed`,
+`n_clusters_total`, `summary`) is a **bridge-side** contract, covered
+by `tests/test_batch.py`.
 
 ---
 

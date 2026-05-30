@@ -6,6 +6,30 @@ versioning follows [SemVer](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.1.2] - 2026-05-30
+
+### Changed
+- Upstream `neural-cca` pin widened from `>=0.1,<0.2` to `>=0.2,<0.3`
+  to track `neural_cca` 0.2.0 (which removed `batch_sort_experiment`;
+  its logic now lives here). This crosses a 0.x minor, so
+  `CROSS_CHECKS.md` was re-verified against the new upstream. The CI
+  SHA pins in `.github/workflows/{tests,docs}.yml` must move to the
+  `neural_cca` v0.2.0 tag commit (see `docs/developer.rst` → pin
+  policy).
+- `batch_sort_experiment` is now implemented entirely in the bridge
+  (`vision_ice_analysis/pipelines.py`) instead of delegating to
+  `neural_cca.sorting.batch`. This removes the leaf→leaf coupling
+  where `neural_cca` imported `visioniceio` directly. The bridge now
+  loads the experiment (directory **or** `visioniceio` zarr) and loops
+  electrodes itself, reusing the same coupled-mask electrode
+  extraction (`_extract_electrode_arrays`) as `load_from_visioniceio`
+  — so the single-electrode and batch NaN-filtering contracts can no
+  longer drift. `stim_window` and an angle mapping (`tlabel2angle` or
+  `n_angle_steps`) are required; the summary-dict and output-zarr
+  schemas are unchanged. New `tests/test_batch.py` covers the
+  end-to-end path; it newly depends on
+  `neural_cca.minimal_spike_train_analysis` (see `CROSS_CHECKS.md`).
+
 ### Added
 - `SortingData.metadata['provenance']` extended with a richer audit
   trail beyond seed + library versions:
@@ -196,11 +220,14 @@ versioning follows [SemVer](https://semver.org/spec/v2.0.0.html).
   requires a paid GitHub plan and the source set to
   *GitHub Actions*. The docs *build* succeeds; only the deploy step
   fails. Acceptable until Pages is enabled or the repo goes public.
-- No integration test runs `load_from_visioniceio` →
-  `run_sorting_pipeline` against a real or synthetic experiment.
-  Smoke tests catch import-shape regressions only; semantic drift in
-  upstream xarray dim names or NaN-padding sentinel goes undetected
-  until the first real-data run.
+- `tests/test_batch.py` runs `batch_sort_experiment` end-to-end over a
+  synthetic `visioniceio`-shaped zarr (load → coupled-mask extraction
+  → `run_sorting_pipeline` → consolidated zarr), so the shared
+  extraction + sort path is now covered. A dedicated single-electrode
+  `load_from_visioniceio` test against a raw LabView directory is
+  still absent; semantic drift on the *directory* path (upstream dim
+  names, NaN-padding sentinel) goes undetected until the first
+  real-data run.
 
 ### Roadmap
 

@@ -44,8 +44,10 @@ For a zarr-backed summary across all electrodes, use `batch_sort_experiment`:
 from vision_ice_analysis import batch_sort_experiment
 
 summary = batch_sort_experiment(
-    data_source="/path/to/experiment",
+    data_source="/path/to/experiment",  # directory or a visioniceio .zarr
     name="c5607a07",
+    stim_window=(0.5, 2.5),  # (onset, end) seconds — required
+    n_angle_steps=12,        # LabView 30° convention; or pass tlabel2angle=
 )
 ```
 

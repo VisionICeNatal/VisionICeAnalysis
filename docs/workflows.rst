@@ -52,7 +52,11 @@ use ``batch_sort_experiment``::
 
     from vision_ice_analysis import batch_sort_experiment
 
-    summary = batch_sort_experiment("/path/to/data", "c5607a07")
+    summary = batch_sort_experiment(
+        "/path/to/data", "c5607a07",  # directory or a visioniceio .zarr
+        stim_window=(0.5, 2.5),       # (onset, end) seconds — required
+        n_angle_steps=12,             # or pass tlabel2angle={1: 0.0, ...}
+    )
     print(summary["result_path"])
 
 This loads the experiment once, iterates over electrodes, runs sorting

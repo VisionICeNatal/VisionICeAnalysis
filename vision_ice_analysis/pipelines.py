@@ -1,7 +1,22 @@
-"""Spike-sorting data extraction from VisionICeIO experiments.
+"""Spike-sorting workflows over VisionICeIO experiments.
 
-Converts the xarray-based ``Experiment`` structure into the flat numpy
-arrays expected by the spike-sorting pipeline in :mod:`neural_cca`.
+This is the only layer that knows how a Natal recording is stored on
+disk (a LabView experiment directory or a ``visioniceio`` zarr store)
+*and* how to drive the :mod:`neural_cca` sorter.  By design neither
+upstream leaf knows about the other — the composition lives here (see
+``../CLAUDE.md`` → dependency direction).
+
+Two entry points:
+
+* :func:`load_from_visioniceio` — load one electrode into a
+  ``SortingData`` container for a single :func:`run_sorting_pipeline`
+  call.
+* :func:`batch_sort_experiment` — loop every electrode, sort each, and
+  write a consolidated zarr summary.
+
+Both share one electrode-extraction helper
+(:func:`_extract_electrode_arrays`) so the NaN-filtering contract can
+never drift between the single-shot and batch paths.
 """
 
 from __future__ import annotations
@@ -11,13 +26,20 @@ import os
 import platform
 import sys
 import warnings
+from collections.abc import Sequence
 from datetime import datetime, timezone
 from importlib.metadata import PackageNotFoundError
 from importlib.metadata import version as _pkg_version
 from pathlib import Path
 
 import numpy as np
-from neural_cca import SortingData, steps2degree
+import xarray as xr
+from neural_cca import (
+    SortingData,
+    minimal_spike_train_analysis,
+    run_sorting_pipeline,
+    steps2degree,
+)
 from numpy.random import SeedSequence
 from visioniceio import Experiment
 
@@ -179,6 +201,130 @@ def _provenance(seed: int, data_source: str | Path | None = None) -> dict:
     }
 
 
+# ----------------------------------------------------------------------
+# Shared loading / reshaping helpers
+#
+# These three helpers are the *only* place that bridges the LabView /
+# zarr layout to the flat arrays the sorter wants.  Keeping them shared
+# between ``load_from_visioniceio`` and ``batch_sort_experiment`` means
+# the NaN-filtering and angle-mapping contracts cannot drift between the
+# single-electrode and batch code paths.
+# ----------------------------------------------------------------------
+
+
+def _load_experiment_dataset(
+    data_source: str | Path,
+    name: str | None,
+) -> tuple[xr.DataArray, xr.DataArray, xr.DataArray, float, dict]:
+    """Resolve a data source to the arrays the sorter needs.
+
+    Accepts either a VisionICeIO experiment **directory** (raw LabView
+    ``.swa/.spi/.stm/.ana`` or headerless ``.swave/.spike/...`` files)
+    or a previously saved ``visioniceio`` **zarr** store.
+
+    Returns ``(waveforms, spike_times, stim_label, sample_rate_hz,
+    experiment_metadata)`` where the first three are
+    ``xarray.DataArray`` s spanning all electrodes.
+
+    Raises:
+        FileNotFoundError: If *data_source* does not exist.
+        ValueError: If a raw directory is given without *name*.
+    """
+    data_source = Path(data_source)
+    if not data_source.exists():
+        raise FileNotFoundError(f"Data source not found: {data_source}")
+
+    if str(data_source).endswith(".zarr"):
+        ds = xr.open_zarr(str(data_source))
+        sample_rate = float(ds.attrs.get("SpikeSamplingFrequency", 32_000.0))
+        return ds.waveforms, ds.spike_times, ds.stim_label, sample_rate, dict(ds.attrs)
+
+    if name is None:
+        raise ValueError(
+            "name (the experiment file prefix, e.g. 'c5607a07') is required "
+            "for a raw experiment directory; it is only optional for a "
+            ".zarr store."
+        )
+    exp = Experiment()
+    exp.load_from_dir(path=str(data_source), name=name, save_as=None)
+    exp_metadata = dict(exp.metadata) if exp.metadata else {}
+    return (
+        exp.waveforms,
+        exp.spike_times,
+        exp.stim_label,
+        float(exp.sample_rate_spike),
+        exp_metadata,
+    )
+
+
+def _extract_electrode_arrays(
+    waveforms: xr.DataArray,
+    spike_times: xr.DataArray,
+    electrode: int,
+) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """Flatten one electrode to ``(waveforms, spike_times, trials)``.
+
+    Selects the electrode, stacks ``(trials, spikes_idx)`` into one
+    spike axis, and applies a **coupled** valid-spike mask: a spike
+    survives only when its waveform has at least one non-NaN sample
+    *and* its spike time is non-NaN.  Both arrays — and the per-spike
+    trial index — are indexed with the *same* mask, so they can never
+    fall out of alignment.  (Filtering waveforms and spike times
+    independently, as the old upstream batch did, risks a length or
+    ordering mismatch whenever the two NaN patterns diverge.)
+
+    Returns:
+        ``(waveforms (n_spikes, snippet_len) float64,
+        spike_times (n_spikes,) float64,
+        trials (n_spikes,) int64)`` — trial-major within the electrode.
+    """
+    wv = waveforms.sel(electrodes=electrode).stack(sidx_rec=("trials", "spikes_idx"))
+    st = spike_times.sel(electrodes=electrode).stack(sidx_rec=("trials", "spikes_idx"))
+
+    valid = (wv.notnull().any(dim="snippet_time") & st.notnull()).values
+    valid_idx = np.nonzero(valid)[0]
+    wv = wv.isel(sidx_rec=valid_idx)
+    st = st.isel(sidx_rec=valid_idx)
+
+    waveforms_out = wv.T.values.astype(np.float64)  # (n_spikes, snippet_length)
+    spike_times_out = st.values.astype(np.float64)
+    trials_out = wv.trials.values.astype(np.int64)
+    return waveforms_out, spike_times_out, trials_out
+
+
+def _map_angles(
+    stim_labels: np.ndarray,
+    tlabel2angle: dict[int, float],
+    *,
+    allow_missing_fill: bool,
+) -> np.ndarray:
+    """Map per-trial 1-based stimulus labels to angles in degrees.
+
+    When ``allow_missing_fill`` is ``False`` (the tuning path), every
+    observed label must be present in *tlabel2angle* or a ``KeyError``
+    is raised — otherwise the comprehension would alias unrelated
+    conditions or blow up deep in the call stack.  When ``True`` (tuning
+    disabled), unmapped labels are filled with ``0.0``: the angles are
+    still carried in ``SortingData`` but are never consumed downstream,
+    so the placeholder is harmless (e.g. a mixed dot/grating-contrast
+    design where labels are not one-orientation-per-stimulus).
+    """
+    observed = sorted({int(lbl) for lbl in stim_labels})
+    missing = [lbl for lbl in observed if lbl not in tlabel2angle]
+    if missing:
+        if not allow_missing_fill:
+            raise KeyError(
+                f"Stimulus labels {missing} not found in tlabel2angle mapping. "
+                f"Labels in experiment: {observed}. "
+                f"Mapped labels: {sorted(tlabel2angle.keys())}. "
+                f"Pass a tlabel2angle dict that covers all labels (or disable "
+                f"tuning with compute_tuning=False if angles are not meaningful "
+                f"for this protocol)."
+            )
+        tlabel2angle = {**tlabel2angle, **{lbl: 0.0 for lbl in missing}}
+    return np.asarray([tlabel2angle[int(lbl)] for lbl in stim_labels], dtype=np.float64)
+
+
 def load_from_visioniceio(
     data_dir: str | Path,
     name: str,
@@ -194,8 +340,10 @@ def load_from_visioniceio(
     """Load an experiment and return a ``SortingData`` container.
 
     Args:
-        data_dir: Path to the experiment directory.
+        data_dir: Path to the experiment directory (or a ``.zarr``
+            store previously saved by ``visioniceio``).
         name: Experiment name (file prefix, e.g. ``'c5607a07'``).
+            Required for raw directories; ignored for zarr stores.
         electrode: Electrode index to select.
         tlabel2angle: Mapping from 1-based stimulus label to angle in
             degrees.  Defaults to ``neural_cca.steps2degree(12)`` (12
@@ -204,9 +352,9 @@ def load_from_visioniceio(
             (*Front. Neural Circuits*) recommend at least 4-5 trials
             per direction; a warning is emitted below that threshold.
         waveform_fs: Waveform sampling rate in Hz. When ``None``
-            (default) the value is read from ``exp.sample_rate_spike``.
-            A warning is emitted below 10 kHz, which is uncommon for
-            extracellular spike sorting.
+            (default) the value is read from the experiment metadata
+            (``SpikeSamplingFrequency``).  A warning is emitted below
+            10 kHz, which is uncommon for extracellular spike sorting.
         stim_window: ``(onset, end)`` of the stimulus period within
             each trial, **in seconds**. Spike times outside this window
             are part of the pre/post-stimulus epochs (the implicit
@@ -264,11 +412,10 @@ def load_from_visioniceio(
         seed = int(SeedSequence().entropy)
 
     # --- Load experiment (skip zarr export) ---
-    exp = Experiment()
-    exp.load_from_dir(path=str(data_dir), name=name, save_as=None)
+    wv_da, st_da, stim_da, sample_rate, exp_metadata = _load_experiment_dataset(data_dir, name)
 
     if waveform_fs is None:
-        waveform_fs = float(exp.sample_rate_spike)
+        waveform_fs = sample_rate
     if waveform_fs < 10_000:
         warnings.warn(
             f"waveform_fs={waveform_fs} Hz is below the 10 kHz floor "
@@ -278,52 +425,24 @@ def load_from_visioniceio(
             stacklevel=2,
         )
 
-    # --- Waveforms: (electrodes, trials, spikes_idx, snippet_time)
-    #     → select electrode → stack → shared NaN mask → (n_spikes, snippet_time) ---
-    wv = exp.waveforms.sel(electrodes=electrode)
-    wv = wv.stack(sidx_rec=("trials", "spikes_idx"))
+    # --- Waveforms + spike times for this electrode (coupled NaN mask) ---
+    waveforms, spike_times, trials = _extract_electrode_arrays(wv_da, st_da, electrode)
 
-    # --- Spike times ---
-    st = exp.spike_times.sel(electrodes=electrode)
-    st = st.stack(sidx_rec=("trials", "spikes_idx"))
-
-    # --- Shared valid-spike mask: require both waveform and spike time ---
-    valid = (wv.notnull().any(dim="snippet_time") & st.notnull()).values
-    valid_idx = np.nonzero(valid)[0]
-    wv = wv.isel(sidx_rec=valid_idx)
-    st = st.isel(sidx_rec=valid_idx)
-
-    waveforms = wv.T.values.astype(np.float64)  # (n_spikes, snippet_length)
-    spike_times = st.values.astype(np.float64)
-
-    # --- Trial indices (from the multi-index created by stack) ---
-    trials = wv.trials.values.astype(np.int64)
-
-    # --- Stimulus angles ---
-    unique_labels = sorted(set(int(w) for w in exp.stim_label.data))
-    missing = [lbl for lbl in unique_labels if lbl not in tlabel2angle]
-    if missing:
-        raise KeyError(
-            f"Stimulus labels {missing} not found in tlabel2angle mapping. "
-            f"Labels in experiment: {unique_labels}. "
-            f"Mapped labels: {sorted(tlabel2angle.keys())}. "
-            f"Pass a tlabel2angle dict that covers all labels."
-        )
-    angles = np.array(
-        [tlabel2angle[int(w)] for w in exp.stim_label.data],
-        dtype=np.float64,
-    )
+    # --- Stimulus angles (strict: every label must be mapped) ---
+    stim_labels = stim_da.values
+    angles = _map_angles(stim_labels, tlabel2angle, allow_missing_fill=False)
+    n_trials = int(len(stim_labels))
 
     # Sampling-adequacy check: Mazurek et al. 2014 (Front. Neural
     # Circ.) recommend >=4-5 trials per direction for stable OSI/DSI
     # estimates. Below that, the indices are noise-dominated.
-    n_directions = len(unique_labels)
+    n_directions = len({int(lbl) for lbl in stim_labels})
     if n_directions > 0:
-        trials_per_direction = len(exp.stim_label) / n_directions
+        trials_per_direction = n_trials / n_directions
         if trials_per_direction < 5:
             warnings.warn(
                 f"{trials_per_direction:.1f} trials per direction "
-                f"({len(exp.stim_label)} trials / {n_directions} directions) "
+                f"({n_trials} trials / {n_directions} directions) "
                 "is below the Mazurek 2014 recommendation of >=5 for "
                 "stable OSI/DSI estimates.",
                 stacklevel=2,
@@ -336,7 +455,7 @@ def load_from_visioniceio(
         "electrode": electrode,
         "name": name,
         "data_dir": str(data_dir),
-        "experiment_metadata": exp.metadata,
+        "experiment_metadata": exp_metadata,
         "provenance": _provenance(seed, data_dir),
     }
     if extra_metadata:
@@ -350,7 +469,7 @@ def load_from_visioniceio(
         trials=trials,
         angles=angles,
         waveform_fs=waveform_fs,
-        n_trials=int(len(exp.stim_label)),
+        n_trials=n_trials,
         stim_window=stim_window,
         stim_frequency=stim_frequency,
         metadata=metadata,
@@ -361,62 +480,332 @@ def batch_sort_experiment(
     data_source: str | Path,
     name: str | None = None,
     *,
+    output_path: str | Path | None = None,
+    electrode_indices: Sequence[int] | None = None,
+    n_clusters: int | None = None,
+    k_range: Sequence[int] = range(2, 6),
+    tlabel2angle: dict[int, float] | None = None,
+    n_angle_steps: int | None = None,
+    stim_window: tuple[float, float] | None = None,
+    stim_frequency: float | None = None,
+    waveform_fs: float | None = None,
+    refractory_period: float = 0.001,
+    compute_sta: bool = True,
+    compute_tuning: bool = True,
     seed: int | None = None,
-    **kwargs,
+    **pipeline_kwargs,
 ) -> dict:
-    """Batch spike sorting across all electrodes (zarr summary).
+    """Batch spike sorting across all electrodes (writes a zarr summary).
 
-    Thin re-export of :func:`neural_cca.sorting.batch.batch_sort_experiment`.
-    See that function for full documentation and the list of keyword
-    arguments.
+    Loads a VisionICeIO experiment (directory or zarr store) once,
+    iterates over electrodes, runs :func:`run_sorting_pipeline` on each,
+    computes optional spike-train statistics and per-cluster firing
+    rates, and writes a consolidated zarr store.  All loading and
+    reshaping reuses the same helpers as :func:`load_from_visioniceio`,
+    so the single-electrode and batch paths share one extraction
+    contract.
+
+    ``stim_window`` and an angle mapping are **required** — there is no
+    library default because both are recording-specific:
+
+    * ``stim_window=(onset, end)`` in seconds (e.g. ``(0.5, 2.5)`` for a
+      500 ms baseline + 2 s stimulus).
+    * ``tlabel2angle={1: 0.0, 2: 30.0, ...}`` *or* ``n_angle_steps=12``
+      (the LabView 30-degree convention; see :func:`steps2degree`).
 
     Args:
-        data_source: Path to either a VisionICeIO experiment directory
-            (with ``.swa/.spi/.stm/.ana`` files) or a previously saved
-            zarr store.
-        name: Experiment file prefix (e.g. ``'c5607a07'``). Required for
-            raw directories; ignored for zarr stores.
-        seed: RNG seed forwarded to the upstream sorter for
-            reproducible stochastic clustering. Required for
-            publishable runs. Translated to upstream ``rng=`` —
-            ``neural_cca.sorting.batch.batch_sort_experiment`` accepts
-            ``rng: Generator | int | None``, so passing an integer
-            seed there yields a reproducible
-            ``np.random.default_rng(seed)``-equivalent stream.  The
-            translation is done bridge-side so the bridge can keep
-            the friendlier ``seed=`` name (matching every other
-            ``load_from_visioniceio`` callsite) without leaking the
-            upstream-specific kwarg name onto callers.  Callers that
-            need a fully-seeded ``PCG64DXSM`` Generator (RNG policy in
-            ``CROSS_CHECKS.md``) should construct it explicitly and
-            pass ``rng=`` through ``**kwargs`` instead.
-        **kwargs: Forwarded verbatim to the upstream
-            ``neural_cca.sorting.batch.batch_sort_experiment``.  Upstream
-            additionally forwards any unrecognised keys to
-            ``run_sorting_pipeline`` per electrode, so options like
-            ``min_silhouette=`` or ``preprocess=`` can be set here.
+        data_source: VisionICeIO experiment directory (raw LabView
+            files) or a ``.zarr`` store saved by ``visioniceio``.
+        name: Experiment file prefix.  Required for raw directories;
+            ignored for zarr stores.
+        output_path: Where to write the results zarr.  Defaults to
+            ``<data_source stem>_sorted.zarr`` next to the source.
+        electrode_indices: Which electrodes to process.  ``None``
+            processes all present in the data.
+        n_clusters: Fixed cluster count per electrode.  ``None`` →
+            auto-select via silhouette over *k_range*.
+        k_range: Candidate k values for auto-selection.
+        tlabel2angle: Mapping from 1-based stimulus label to angle.
+            **Required** unless *n_angle_steps* is given.
+        n_angle_steps: Number of equidistant angle steps (builds the
+            mapping via :func:`steps2degree`).  **Required** unless
+            *tlabel2angle* is given.
+        stim_window: ``(onset, end)`` of the stimulus period within each
+            trial (seconds).  **Required.**
+        stim_frequency: Temporal frequency of the stimulus (Hz).
+            ``None`` disables F1/F0 computation in the per-cluster
+            tuning block.
+        waveform_fs: Waveform sampling rate (Hz).  ``None`` reads it
+            from the experiment metadata.
+        refractory_period: Refractory period for RPV computation (s).
+        compute_sta: Compute per-cluster spike-train statistics.
+        compute_tuning: Compute per-cluster orientation selectivity.
+            When ``False``, unmapped stimulus labels are tolerated.
+        seed: RNG seed for reproducible stochastic clustering.
+            Forwarded to ``run_sorting_pipeline`` as ``rng=seed`` and
+            recorded in the output store's attributes.  Required for
+            publishable runs.  (An explicit ``rng=`` in
+            ``pipeline_kwargs`` is honoured when ``seed`` is ``None``.)
+        **pipeline_kwargs: Extra keyword arguments forwarded verbatim to
+            :func:`run_sorting_pipeline` per electrode (e.g.
+            ``min_silhouette=``, ``preprocess=``, ``pca_components=``,
+            ``n_init=``, ``bin_size=``, ``invert_waveforms=``).
 
     Returns:
         Summary ``dict`` with keys:
             ``result_path`` — path to output zarr store.
             ``n_electrodes_processed`` — count of successful electrodes.
             ``n_clusters_total`` — total clusters across all electrodes.
-            ``summary`` — per-electrode dict with ``quality``, ``n_clusters``,
-            optional STA / tuning metrics.
+            ``summary`` — per-electrode dict with ``quality``,
+            ``n_clusters``, ``n_spikes``, and optional ``sta_metrics`` /
+            ``os_metrics``.
+
+    Raises:
+        FileNotFoundError: If *data_source* does not exist.
+        ValueError: If *stim_window* is ``None``, or if both
+            *tlabel2angle* and *n_angle_steps* are ``None``.
+        KeyError: If *compute_tuning* is ``True`` and *tlabel2angle*
+            does not cover every observed stimulus label.
 
     Note:
         The returned summary does **not** include per-spike
         ``cluster_labels``. For per-spike labels, run
-        :func:`load_from_visioniceio` + :func:`neural_cca.run_sorting_pipeline`
+        :func:`load_from_visioniceio` + :func:`run_sorting_pipeline`
         per electrode.
     """
-    from neural_cca.sorting.batch import batch_sort_experiment as _batch
+    if stim_window is None:
+        raise ValueError(
+            "stim_window is required. Pass e.g. stim_window=(0.5, 2.5) "
+            "for a 500ms baseline + 2s stimulus protocol. There is no "
+            "library default because stim windows are recording-specific."
+        )
+    if tlabel2angle is None and n_angle_steps is None:
+        raise ValueError(
+            "Either tlabel2angle or n_angle_steps is required. "
+            "Pass tlabel2angle={1: 0.0, 2: 30.0, ...} or n_angle_steps=12 "
+            "(LabView 30-degree convention). See "
+            "vision_ice_analysis.steps2degree for the helper."
+        )
+    if tlabel2angle is None:
+        tlabel2angle = steps2degree(n_angle_steps)
 
-    if seed is not None:
-        # Translate the bridge-side ``seed=`` to the upstream's ``rng=``.
-        # Upstream accepts ``int | Generator | None``, so an int suffices
-        # and avoids materialising a Generator the bridge doesn't need.
-        # ``setdefault`` lets an explicit ``rng=`` in kwargs win over a
-        # default ``seed=`` (caller can mix the two when migrating code).
-        kwargs.setdefault("rng", seed)
-    return _batch(data_source, name, **kwargs)
+    # Bridge keeps the friendly ``seed=`` name; upstream takes ``rng``.
+    # An explicit ``rng=`` in kwargs only wins when no ``seed`` is given.
+    rng = seed if seed is not None else pipeline_kwargs.pop("rng", None)
+
+    wv_da, st_da, stim_da, sample_rate, exp_metadata = _load_experiment_dataset(data_source, name)
+    if waveform_fs is None:
+        waveform_fs = sample_rate
+
+    src_path = Path(data_source)
+    if output_path is None:
+        output_path = src_path.parent / (src_path.stem + "_sorted.zarr")
+    output_path = Path(output_path)
+
+    # --- Stimulus angles (relaxed when tuning is off) ---
+    stim_labels = stim_da.values
+    angles = _map_angles(stim_labels, tlabel2angle, allow_missing_fill=not compute_tuning)
+    n_trials = int(len(stim_labels))
+
+    # --- Determine electrodes ---
+    all_electrodes = wv_da.electrodes.values
+    if electrode_indices is not None:
+        all_electrodes = np.array([e for e in electrode_indices if e in all_electrodes])
+
+    # --- Process each electrode ---
+    summary: dict[int, dict] = {}
+    all_electrode_results: list[dict] = []
+    s_on, s_end = stim_window
+    stim_dur = s_end - s_on
+
+    for elec_idx in all_electrodes:
+        elec = int(elec_idx)
+        try:
+            waveforms, spike_times, trials_arr = _extract_electrode_arrays(wv_da, st_da, elec)
+
+            if len(waveforms) < 10:
+                warnings.warn(
+                    f"Electrode {elec}: only {len(waveforms)} spikes, skipping.",
+                    stacklevel=2,
+                )
+                continue
+
+            data = SortingData(
+                waveforms=waveforms,
+                spike_times=spike_times,
+                trials=trials_arr,
+                angles=angles,
+                waveform_fs=float(waveform_fs),
+                n_trials=n_trials,
+                stim_window=stim_window,
+                stim_frequency=stim_frequency,
+                metadata={"electrode": elec},
+            )
+
+            result = run_sorting_pipeline(
+                data,
+                n_clusters=n_clusters,
+                k_range=k_range,
+                rng=rng,
+                refractory_period=refractory_period,
+                compute_os=compute_tuning,
+                plot=False,
+                **pipeline_kwargs,
+            )
+
+            # --- Spike-train statistics per cluster ---
+            sta_metrics: dict[int, dict] | None = None
+            if compute_sta:
+                sta_metrics = {}
+                for cl in np.unique(result.cluster_labels):
+                    sta_metrics[int(cl)] = minimal_spike_train_analysis(
+                        spike_times,
+                        cluster_labels=result.cluster_labels,
+                        cluster_id=int(cl),
+                        refractory_period=refractory_period,
+                        stim_window=stim_window,
+                        n_trials=n_trials,
+                    )
+
+            # --- Firing rates per trial per cluster ---
+            fr_by_trial: dict[int, np.ndarray] = {}
+            for cl in np.unique(result.cluster_labels):
+                rates = np.zeros(n_trials, dtype=np.float64)
+                cl_mask = result.cluster_labels == cl
+                cl_st = spike_times[cl_mask]
+                cl_tr = trials_arr[cl_mask]
+                for t in range(n_trials):
+                    t_spikes = cl_st[cl_tr == t]
+                    rates[t] = np.sum((t_spikes > s_on) & (t_spikes <= s_end)) / stim_dur
+                fr_by_trial[int(cl)] = rates
+
+            # --- Spike times per trial per cluster ---
+            st_by_trial: dict[int, dict[int, np.ndarray]] = {}
+            for cl in np.unique(result.cluster_labels):
+                cl_mask = result.cluster_labels == cl
+                cl_st = spike_times[cl_mask]
+                cl_tr = trials_arr[cl_mask]
+                st_by_trial[int(cl)] = {t: cl_st[cl_tr == t] for t in range(n_trials)}
+
+            all_electrode_results.append(
+                {
+                    "electrode": elec,
+                    "result": result,
+                    "sta_metrics": sta_metrics,
+                    "fr_by_trial": fr_by_trial,
+                    "st_by_trial": st_by_trial,
+                }
+            )
+
+            elec_summary = {
+                "n_clusters": result.n_clusters,
+                "quality": result.quality,
+                "n_spikes": len(waveforms),
+            }
+            if sta_metrics:
+                elec_summary["sta_metrics"] = sta_metrics
+            if result.os_metrics:
+                elec_summary["os_metrics"] = result.os_metrics
+            summary[elec] = elec_summary
+
+        except Exception as e:
+            warnings.warn(
+                f"Electrode {elec}: processing failed — {e}",
+                stacklevel=2,
+            )
+            continue
+
+    # --- Build and save output zarr ---
+    n_proc = len(all_electrode_results)
+    if n_proc == 0:
+        warnings.warn("No electrodes were successfully processed.", stacklevel=2)
+        return {
+            "result_path": str(output_path),
+            "n_electrodes_processed": 0,
+            "n_clusters_total": 0,
+            "summary": summary,
+        }
+
+    max_clusters = max(r["result"].n_clusters for r in all_electrode_results)
+    total_clusters = sum(r["result"].n_clusters for r in all_electrode_results)
+
+    # Max spikes per trial across all results (ragged → NaN-padded).
+    max_spk_per_trial = 0
+    for r in all_electrode_results:
+        for cl_trials in r["st_by_trial"].values():
+            for st_arr in cl_trials.values():
+                max_spk_per_trial = max(max_spk_per_trial, len(st_arr))
+    max_spk_per_trial = max(max_spk_per_trial, 1)
+
+    processed_electrodes = np.array([r["electrode"] for r in all_electrode_results], dtype=np.int64)
+
+    # float64 throughout: spike times are seconds with microsecond
+    # precision; float32 (~7 digits) silently loses tens of microseconds
+    # near 100 s and would not round-trip the io_util zarr writers.
+    spike_times_arr = np.full(
+        (n_proc, max_clusters, n_trials, max_spk_per_trial),
+        np.nan,
+        dtype=np.float64,
+    )
+    firing_rates_arr = np.full(
+        (n_proc, max_clusters, n_trials),
+        np.nan,
+        dtype=np.float64,
+    )
+    n_clusters_arr = np.zeros(n_proc, dtype=np.int32)
+
+    for i, r in enumerate(all_electrode_results):
+        n_clusters_arr[i] = r["result"].n_clusters
+        for cl_idx, cl in enumerate(sorted(r["fr_by_trial"].keys())):
+            firing_rates_arr[i, cl_idx, :] = r["fr_by_trial"][cl]
+            for t in range(n_trials):
+                st = r["st_by_trial"][cl].get(t, np.array([]))
+                spike_times_arr[i, cl_idx, t, : len(st)] = st
+
+    out_ds = xr.Dataset(
+        data_vars={
+            "spike_times_by_cluster": xr.DataArray(
+                spike_times_arr,
+                dims=("electrodes", "clusters", "trials", "spike_idx"),
+                attrs={"description": "Spike times per cluster per trial, NaN-padded"},
+            ),
+            "firing_rate_by_trial": xr.DataArray(
+                firing_rates_arr,
+                dims=("electrodes", "clusters", "trials"),
+                attrs={"description": "Firing rate (Hz) per cluster per trial"},
+            ),
+            "trial_angles": xr.DataArray(
+                angles,
+                dims=("trials",),
+                attrs={"description": "Stimulus angle (degrees) per trial"},
+            ),
+            "n_clusters": xr.DataArray(
+                n_clusters_arr,
+                dims=("electrodes",),
+                attrs={"description": "Number of clusters per electrode"},
+            ),
+        },
+        coords={
+            "electrodes": processed_electrodes,
+            "clusters": np.arange(max_clusters),
+            "trials": np.arange(n_trials),
+            "spike_idx": np.arange(max_spk_per_trial),
+        },
+        attrs={
+            "description": "Batch spike sorting results",
+            "seed": int(seed) if seed is not None else "unset",
+            "bit_generator": _DEFAULT_BIT_GENERATOR,
+            "refractory_period": refractory_period,
+            "stim_window": [float(stim_window[0]), float(stim_window[1])],
+            **{k: str(v) for k, v in exp_metadata.items()},
+        },
+    )
+
+    out_ds.to_zarr(str(output_path), mode="w")
+
+    return {
+        "result_path": str(output_path),
+        "n_electrodes_processed": n_proc,
+        "n_clusters_total": total_clusters,
+        "summary": summary,
+    }
