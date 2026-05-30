@@ -48,6 +48,6 @@ jobs:
       # lines (and the git-config step above) — `pip install -e ".[test]"`
       # will then pull them automatically.
       - run: pip install "visioniceio @ git+https://github.com/VisionICeNatal/VisionICeIO.git@63bb74ac1fd473bbd2e9750eb8d4f70964af7538"
-      - run: pip install "neural-cca @ git+https://github.com/goecidbn/neural_cca.git@626e5efe325126eddd59fd29f638484f91b63f60"
+      - run: pip install "neural-cca @ git+https://github.com/goecidbn/neural_cca.git@bc8eccbf5a69c783215dc125ea43739782ac4302"
       - run: pip install -e ".[test]"
       - run: pytest --cov=vision_ice_analysis --cov-report=term-missing
