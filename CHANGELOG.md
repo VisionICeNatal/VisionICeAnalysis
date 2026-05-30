@@ -7,6 +7,36 @@ versioning follows [SemVer](https://semver.org/spec/v2.0.0.html).
 ## [Unreleased]
 
 ### Added
+- `SortingData.metadata['provenance']` extended with a richer audit
+  trail beyond seed + library versions:
+  - ``software_versions`` now also reports ``scipy``, ``scikit-learn``,
+    ``xarray``, ``zarr``, and ``numcodecs`` — every library whose
+    release notes plausibly perturb numerical output via random,
+    linalg, or KMeans/PCA determinism contracts.
+  - ``input_sha256`` — SHA-256 of the input ``data_source``. For a
+    directory: hash of sorted ``(relpath, file_sha256)`` pairs over
+    every file in the tree, with files >100 MB folded in as
+    ``(path, size, mtime_ns)`` only so multi-GB zarr chunks don't
+    force a re-read on every load. For a single file: streamed hash.
+    ``None`` when the source is an in-memory ``xarray.Dataset``.
+  - ``git_commit`` — SHA of the installed bridge code, detected by
+    walking up from ``__file__`` to find a ``.git`` directory and
+    resolving HEAD (loose ref → packed-refs fallback → detached SHA).
+    ``None`` when installed from a wheel rather than an editable
+    git checkout.
+  - ``platform`` — ``{system, release, machine, python_compiler}``
+    from ``platform.*``, for cross-OS reproducibility audits.
+  - ``threading`` — ``OMP_NUM_THREADS`` / ``MKL_NUM_THREADS`` /
+    ``OPENBLAS_NUM_THREADS`` from the environment (or ``"unset"``).
+    These silently perturb numerical output on some LAPACK paths;
+    logging them lets a downstream consumer reproduce results
+    bit-for-bit.
+
+  Implemented as the new ``_compute_input_sha256`` and
+  ``_detect_installed_git_sha`` helpers in ``pipelines.py``; the
+  ``_provenance`` helper now takes an optional ``data_source``
+  argument. ``tests/test_imports.py::test_provenance_helper_shape``
+  asserts every new key is present and well-typed.
 - `seed` kwarg on `load_from_visioniceio` and `batch_sort_experiment`
   for reproducible stochastic clustering. When ``None``, a fresh
   ~128-bit master seed is drawn from OS entropy via
@@ -53,6 +83,15 @@ versioning follows [SemVer](https://semver.org/spec/v2.0.0.html).
     estimates).
 
 ### Changed
+- `pyproject.toml`: ``xarray>=2022.6`` and ``zarr>=2.16`` are now
+  declared explicitly as bridge dependencies (bounds chosen to match
+  ``visioniceio``'s own declaration). Both were used directly in
+  ``pipelines.py`` (``.sel``/``.stack``/``.notnull``/``.isel`` on
+  DataArrays; zarr stores produced by ``batch_sort_experiment``) but
+  were pulled in only transitively via ``visioniceio`` — one
+  upstream-policy change away from a broken install. Also added a
+  ``[project.urls] Changelog`` entry pointing at this file on GitHub
+  so PyPI / pip-show surface it.
 - `.github/workflows/{tests,docs}.yml` now pin `visioniceio` and
   `neural-cca` to specific commit SHAs instead of `@main`. Upstream
   churn on unrelated PRs can no longer flap CI; bumping a SHA is now
@@ -129,6 +168,25 @@ versioning follows [SemVer](https://semver.org/spec/v2.0.0.html).
   ``batch_sort_experiment`` docstring documents ``seed`` forwarding
   and the upstream kwarg-name uncertainty.
 
+### Fixed
+- CI hardening across `.github/workflows/{tests,lint,docs}.yml`:
+  - Top-level ``concurrency: { group: <workflow>-<ref>,
+    cancel-in-progress: true }`` so a fast follow-up push or PR
+    update cancels the now-stale in-flight run instead of queueing
+    behind it. Saves Actions minutes on push-heavy days.
+  - ``actions/setup-python@v5`` now opts into pip caching
+    (``cache: 'pip'``, ``cache-dependency-path: pyproject.toml``).
+    Re-runs that don't change ``pyproject.toml`` skip the wheel
+    download for sphinx + pytest + their transitive deps.
+  - Fork-PR token guard at the job level
+    (``if: github.event_name != 'pull_request' ||
+    github.event.pull_request.head.repo.full_name ==
+    github.repository``). Push events and same-repo PRs run
+    normally; PRs from forks show "skipped" because they would
+    otherwise expose the ``UPSTREAM_REPO_TOKEN`` PAT (read access to
+    the private ``visioniceio`` repo) to attacker-controlled
+    workflow code. Maintainer reviews fork PRs locally.
+
 ### Known issues (carried forward)
 - `visioniceio` does not yet publish a Sphinx site; intersphinx
   mapping for it is staged in `docs/conf.py` but commented out, and
@@ -143,6 +201,35 @@ versioning follows [SemVer](https://semver.org/spec/v2.0.0.html).
   Smoke tests catch import-shape regressions only; semantic drift in
   upstream xarray dim names or NaN-padding sentinel goes undetected
   until the first real-data run.
+
+### Roadmap
+
+- Add `CITATION.cff` (co-author Schmidt UFRN, Wolf CIDBN, Schwarz;
+  acknowledge PROBRAL funding) so the bridge is citable.
+- Add `vision_ice_analysis.to_nwb(experiment, sorting_result,
+  extra_metadata) -> NWBFile` exporter that consumes
+  `Experiment + SortingResult + extra_metadata` via `pynwb`. The bridge
+  is the architecturally correct home for NWB knowledge: `visioniceio`
+  stays I/O-only, `neural_cca` stays analysis-only, the bridge owns
+  lab/standard conventions. Depends on the acquisition-side metadata
+  enrichment landing in `visioniceio` first.
+- Re-export `read_ssort` / `write_ssort` from `visioniceio` and add a
+  `to_ssort_from_sorting_result(data, result, path, n_fields=16)`
+  helper that groups spikes by `(cluster, trial)` from
+  `SortingResult.cluster_labels` and writes via `save_ssort`.
+- Synthetic end-to-end integration test:
+  `tests/test_integration_synthetic.py` exercises
+  `load_from_visioniceio → run_sorting_pipeline` against a two-cluster,
+  12-direction synthetic Dataset (catches CROSS_CHECKS contract drift
+  cheaply; recommended primary).
+- Upstream pin bumps when `neural_cca v0.2.0` lands: the bridge's
+  `batch_sort_experiment` will become the sole owner of
+  directory→Dataset loading (Top-10 #1 in the senior-director review).
+- Move the four-commits-past-v0.1.0 `visioniceio` pin to a tagged
+  release (cut `visioniceio v0.1.1` covering the ~28 entries in its
+  `[Unreleased]` backlog, then bump the SHA pin to the tag commit).
+- Author `paper.md` once the JOSS submission path for `neural_cca` is
+  agreed (bridge co-paper or sub-section of the upstream paper).
 
 ## [v0.1.1] — 2026-05-25
 

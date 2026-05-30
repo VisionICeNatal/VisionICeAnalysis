@@ -6,6 +6,9 @@ arrays expected by the spike-sorting pipeline in :mod:`neural_cca`.
 
 from __future__ import annotations
 
+import hashlib
+import os
+import platform
 import sys
 import warnings
 from datetime import datetime, timezone
@@ -41,14 +44,103 @@ def _safe_version(name: str) -> str | None:
         return None
 
 
-def _provenance(seed: int) -> dict:
+def _compute_input_sha256(data_source: str | Path) -> str | None:
+    """SHA-256 of the input ``data_source``.
+
+    For a directory: hash the concatenation of sorted
+    ``(relative_path, file_sha256)`` pairs for each file in the tree.
+    Files >100 MB (e.g. zarr chunks) are not stream-hashed; instead we
+    fold in their ``(path, size, mtime_ns)`` tuple so renames or
+    re-writes of large chunks still perturb the digest without forcing
+    a several-GB read on every load.
+
+    For a single file: hash the file directly.
+
+    Returns ``None`` if ``data_source`` does not exist on disk (e.g. a
+    synthetic ``xarray.Dataset`` was loaded in-memory and no path is
+    meaningful).
+    """
+    path = Path(data_source)
+    if not path.exists():
+        return None
+    hasher = hashlib.sha256()
+    if path.is_file():
+        with path.open("rb") as f:
+            for chunk in iter(lambda: f.read(65536), b""):
+                hasher.update(chunk)
+        return hasher.hexdigest()
+    # Directory: hash of sorted (relpath, contenthash) pairs.
+    for p in sorted(path.rglob("*")):
+        if p.is_file():
+            relpath = p.relative_to(path).as_posix()
+            try:
+                size = p.stat().st_size
+            except OSError:
+                continue
+            if size > 100 * 1024 * 1024:
+                # Large file (likely zarr chunk): metadata only.
+                hasher.update(f"{relpath}|{size}|{p.stat().st_mtime_ns}\n".encode())
+            else:
+                sub = hashlib.sha256()
+                with p.open("rb") as f:
+                    for chunk in iter(lambda: f.read(65536), b""):
+                        sub.update(chunk)
+                hasher.update(f"{relpath}|{sub.hexdigest()}\n".encode())
+    return hasher.hexdigest()
+
+
+def _detect_installed_git_sha() -> str | None:
+    """Best-effort detect the git SHA of the installed bridge code.
+
+    Walks up from this module's ``__file__`` looking for a ``.git``
+    directory. Resolves the HEAD ref (loose ref first, then
+    ``packed-refs`` fallback) or returns the detached-HEAD SHA
+    directly. Returns ``None`` if no ``.git`` is reachable
+    (e.g. installed from a wheel / PyPI rather than editable from a
+    git checkout).
+    """
+    here = Path(__file__).resolve()
+    for parent in [here.parent, *here.parents]:
+        gitdir = parent / ".git"
+        if gitdir.exists():
+            head_file = gitdir / "HEAD"
+            if not head_file.exists():
+                continue
+            head = head_file.read_text().strip()
+            if head.startswith("ref: "):
+                ref_path = gitdir / head[5:]
+                if ref_path.exists():
+                    return ref_path.read_text().strip()
+                # Packed refs fallback.
+                packed = gitdir / "packed-refs"
+                if packed.exists():
+                    for line in packed.read_text().splitlines():
+                        if line.endswith(" " + head[5:]):
+                            return line.split(" ")[0]
+            else:
+                return head  # detached HEAD
+    return None
+
+
+def _provenance(seed: int, data_source: str | Path | None = None) -> dict:
     """Build the ``provenance`` sub-dict for ``SortingData.metadata``.
 
     Captures software versions, the load timestamp, the RNG master
-    seed, and the BitGenerator class the bridge contract is pinned
-    to. The seed + bit_generator pair is the canonical reproducibility
-    key — log both, since ``Generator`` does not guarantee
-    cross-version algorithm stability across numpy releases.
+    seed, the BitGenerator class the bridge contract is pinned to,
+    and an audit trail of where and how the run executed: SHA-256 of
+    the input data source, git SHA of the installed bridge code,
+    OS/platform identifiers, and the BLAS / OpenMP thread-count
+    environment (which silently perturbs numerical output on some
+    LAPACK paths). The ``seed`` + ``bit_generator`` pair is the
+    canonical reproducibility key — log both, since ``Generator``
+    does not guarantee cross-version algorithm stability across
+    numpy releases.
+
+    Software versions cover every library whose release notes
+    plausibly perturb numerical output: ``numpy`` (random, linalg),
+    ``scipy`` (statistical tests and fits), ``scikit-learn`` (KMeans
+    / PCA determinism contracts), ``xarray`` / ``zarr`` / ``numcodecs``
+    (the I/O stack the bridge composes).
 
     See ``CROSS_CHECKS.md`` → *Bridge-side contracts* and
     *RNG policy* for the field list and reconstruction recipe;
@@ -59,11 +151,29 @@ def _provenance(seed: int) -> dict:
         "loaded_at": datetime.now(timezone.utc).isoformat(),
         "seed": int(seed),
         "bit_generator": _DEFAULT_BIT_GENERATOR,
+        "input_sha256": (_compute_input_sha256(data_source) if data_source is not None else None),
+        "git_commit": _detect_installed_git_sha(),
+        "platform": {
+            "system": platform.system(),
+            "release": platform.release(),
+            "machine": platform.machine(),
+            "python_compiler": platform.python_compiler(),
+        },
+        "threading": {
+            "omp_num_threads": os.environ.get("OMP_NUM_THREADS", "unset"),
+            "mkl_num_threads": os.environ.get("MKL_NUM_THREADS", "unset"),
+            "openblas_num_threads": os.environ.get("OPENBLAS_NUM_THREADS", "unset"),
+        },
         "software_versions": {
             "vision-ice-analysis": _safe_version("vision-ice-analysis"),
             "neural-cca": _safe_version("neural-cca"),
             "visioniceio": _safe_version("visioniceio"),
             "numpy": _safe_version("numpy"),
+            "scipy": _safe_version("scipy"),
+            "scikit-learn": _safe_version("scikit-learn"),
+            "xarray": _safe_version("xarray"),
+            "zarr": _safe_version("zarr"),
+            "numcodecs": _safe_version("numcodecs"),
             "python": sys.version.split()[0],
         },
     }
@@ -227,7 +337,7 @@ def load_from_visioniceio(
         "name": name,
         "data_dir": str(data_dir),
         "experiment_metadata": exp.metadata,
-        "provenance": _provenance(seed),
+        "provenance": _provenance(seed, data_dir),
     }
     if extra_metadata:
         metadata = {**extra_metadata, **bridge_metadata}

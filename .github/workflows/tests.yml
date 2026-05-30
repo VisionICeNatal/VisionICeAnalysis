@@ -2,8 +2,21 @@ name: Tests
 
 on: [push, pull_request]
 
+# Cancel any superseded run of the same workflow + ref (push or PR
+# update) so a fast follow-up commit doesn't queue up behind the now-
+# stale previous run. Saves Actions minutes on push-heavy days.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   test:
+    # Fork-PR token guard: PR runs from a fork would expose
+    # UPSTREAM_REPO_TOKEN (a PAT with read access to the private
+    # visioniceio repo) to attacker-controlled workflow code. Skip the
+    # job entirely on fork PRs; maintainer reviews them locally. Push
+    # events and same-repo PRs run normally.
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-latest
     strategy:
       matrix:
@@ -13,6 +26,8 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python-version }}
+          cache: 'pip'
+          cache-dependency-path: pyproject.toml
       # VisionICeIO is a private repo; anonymous git+https:// clones fail
       # with "could not read Username". Authenticate via the repo secret
       # UPSTREAM_REPO_TOKEN (fine-grained PAT with read access to

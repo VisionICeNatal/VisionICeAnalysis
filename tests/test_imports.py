@@ -75,7 +75,16 @@ def test_provenance_helper_shape() -> None:
 
     p = _provenance(seed=12345)
 
-    assert set(p.keys()) >= {"loaded_at", "seed", "bit_generator", "software_versions"}
+    assert set(p.keys()) >= {
+        "loaded_at",
+        "seed",
+        "bit_generator",
+        "input_sha256",
+        "git_commit",
+        "platform",
+        "threading",
+        "software_versions",
+    }
     assert p["seed"] == 12345
     # bit_generator pairs with seed: a paper citing the seed must also
     # cite the BitGenerator class (Generator has no cross-version
@@ -86,8 +95,41 @@ def test_provenance_helper_shape() -> None:
     # versions may be None when running uninstalled from a source checkout,
     # but the keys themselves must be present.
     sw = p["software_versions"]
-    for key in ("vision-ice-analysis", "neural-cca", "visioniceio", "numpy", "python"):
+    for key in (
+        "vision-ice-analysis",
+        "neural-cca",
+        "visioniceio",
+        "numpy",
+        "scipy",
+        "scikit-learn",
+        "xarray",
+        "zarr",
+        "numcodecs",
+        "python",
+    ):
         assert key in sw, f"software_versions missing '{key}'"
     assert sw["python"], "python version should always resolve"
     # ISO-8601 timestamp contains a 'T' between date and time.
     assert "T" in p["loaded_at"]
+
+    # input_sha256 / git_commit are best-effort: hex string or None.
+    # When called without a data_source (as here), input_sha256 must
+    # be None; git_commit depends on whether the install is editable.
+    assert p["input_sha256"] is None
+    assert p["git_commit"] is None or isinstance(p["git_commit"], str)
+
+    # platform sub-dict: every key present, values are strings (even
+    # the empty-string case is a str — never None).
+    plat = p["platform"]
+    assert isinstance(plat, dict)
+    for key in ("system", "release", "machine", "python_compiler"):
+        assert key in plat, f"platform missing '{key}'"
+        assert isinstance(plat[key], str), f"platform['{key}'] is not str"
+
+    # threading sub-dict: every BLAS-env key present, default "unset"
+    # is a str so the value is always a str.
+    thr = p["threading"]
+    assert isinstance(thr, dict)
+    for key in ("omp_num_threads", "mkl_num_threads", "openblas_num_threads"):
+        assert key in thr, f"threading missing '{key}'"
+        assert isinstance(thr[key], str), f"threading['{key}'] is not str"

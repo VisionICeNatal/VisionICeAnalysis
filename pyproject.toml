@@ -15,10 +15,19 @@ keywords = ["neuroscience", "spike-sorting", "pipeline", "electrophysiology"]
 # Upstream pins are bounded at the next 0.x minor: both packages are
 # pre-1.0 and any minor bump can be breaking. See CROSS_CHECKS.md and
 # docs/developer.rst#upstream-version-pin-policy before widening.
+#
+# `xarray` and `zarr` are also declared here even though `visioniceio`
+# brings them in transitively: the bridge uses them directly
+# (`.sel/.stack/.notnull/.isel` on DataArrays in `pipelines.py`, zarr
+# stores produced by `batch_sort_experiment`) and an undeclared
+# transitive is one upstream-policy change away from a broken install.
+# Bounds match `visioniceio`'s declaration so they stay co-versioned.
 dependencies = [
     "neural-cca>=0.1,<0.2",
     "numpy",
     "visioniceio>=0.1,<0.2",
+    "xarray>=2022.6",
+    "zarr>=2.16",
 ]
 
 [project.optional-dependencies]
@@ -29,6 +38,7 @@ dev = ["ruff>=0.4"]
 [project.urls]
 Repository = "https://github.com/VisionICeNatal/VisionICeAnalysis"
 Documentation = "https://VisionICeNatal.github.io/VisionICeAnalysis/"
+Changelog = "https://github.com/VisionICeNatal/VisionICeAnalysis/blob/main/CHANGELOG.md"
 
 [tool.ruff]
 line-length = 100

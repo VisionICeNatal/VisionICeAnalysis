@@ -2,14 +2,27 @@ name: Lint
 
 on: [push, pull_request]
 
+# Cancel any superseded run of the same workflow + ref so a fast
+# follow-up commit doesn't queue up behind the now-stale previous run.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   lint:
+    # Fork-PR token guard for parity with tests.yml / docs.yml. Lint
+    # itself uses no secrets, but keeping the same policy across all
+    # workflows means a fork PR shows uniformly "skipped" status and
+    # there's no surprise about which workflow leaks what.
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
+          cache: 'pip'
+          cache-dependency-path: pyproject.toml
       # Pin ruff so a new release doesn't flap CI on unrelated PRs.
       # Bump deliberately and re-run lint locally before merging the bump.
       - run: pip install ruff==0.15.14

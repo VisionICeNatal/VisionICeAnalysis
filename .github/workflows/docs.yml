@@ -9,8 +9,19 @@ permissions:
   pages: write
   id-token: write
 
+# Cancel any superseded run of the same workflow + ref so a fast
+# follow-up commit doesn't queue up behind the now-stale previous run.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   deploy:
+    # Fork-PR token guard: same rationale as tests.yml — keep the
+    # UPSTREAM_REPO_TOKEN PAT off fork PRs. ``on: push`` already
+    # bounds this workflow to main, but the guard documents the policy
+    # alongside tests.yml so the two stay in sync.
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-latest
     environment:
       name: github-pages
@@ -20,6 +31,8 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
+          cache: 'pip'
+          cache-dependency-path: pyproject.toml
       # See tests.yml for the rationale on UPSTREAM_REPO_TOKEN; same
       # private-repo problem applies here.
       - name: Configure git for private upstream cloning
