@@ -6,7 +6,20 @@ versioning follows [SemVer](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.1.4] - 2026-06-01
+
 ### Changed
+- **Repin to `neural_cca` v0.4.0**: widen the dependency to
+  `neural-cca>=0.4,<0.5` and bump the CI SHA pins in
+  `.github/workflows/{tests,docs}.yml` to the v0.4.0 commit
+  (`1b542c9`). Crosses a 0.x minor; `CROSS_CHECKS.md` re-verified.
+- **BREAKING (upstream contract) — `stim_window` is now required and
+  the stimulus interval is half-open-left `[onset, end)`.** neural_cca
+  0.4.0 dropped the Natal `(0.5, 2.5)` / `stim_frequency=2.0` defaults
+  and flipped `(onset, end]` → `[onset, end)`. The bridge already
+  requires `stim_window` at its boundary (`batch_sort_experiment` /
+  `load_from_visioniceio`), so the public surface is unchanged; the
+  per-trial firing-rate gate was flipped to match (see Fixed).
 - **BREAKING — `batch_sort_experiment`: `compute_sta` →
   `compute_spike_train_stats`, and the summary key `sta_metrics` →
   `spike_train_metrics`.** The old name predated the upstream
@@ -14,6 +27,10 @@ versioning follows [SemVer](https://semver.org/spec/v2.0.0.html).
   average); the toggle computes spike-*train* statistics (MFR/CV/LvR).
 
 ### Fixed
+- `batch_sort_experiment`'s per-trial firing-rate gate now counts
+  spikes in the half-open interval `[onset, end)` (was `(onset, end]`),
+  matching neural_cca 0.4.0 so `fr_by_trial` stays consistent with the
+  rates computed inside `run_sorting_pipeline`.
 - `batch_sort_experiment` now passes `trials=` to
   `minimal_spike_train_analysis`, so per-cluster CV / LvR / refractory
   stats use **within-trial** ISIs instead of globally-sorted spike

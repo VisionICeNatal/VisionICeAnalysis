@@ -42,8 +42,8 @@ required-arg change breaks tests immediately.
 | `angles`         | `np.ndarray (n_trials,)` float64 (degrees, 0-360)      |
 | `waveform_fs`    | float (Hz)                                    |
 | `n_trials`       | int                                           |
-| `stim_window`    | `(onset, end)` tuple of float seconds         |
-| `stim_frequency` | float \| None (Hz)                            |
+| `stim_window`    | `(onset, end)` tuple of float seconds — **required** (no default since v0.4.0; `None` raises) |
+| `stim_frequency` | float \| None (Hz) — default `None` (disables F0/F1/F2) |
 | `metadata`       | dict (bridge populates a fixed schema, see *Bridge-side contracts* below) |
 
 Attributes used downstream:
@@ -97,14 +97,17 @@ on:
 
 `run_sorting_pipeline` (and any helper it calls) gates spikes into the
 stimulated portion of each trial via `data.stim_window=(onset, end)`.
-The bridge documents the filter as `(onset, end]` (half-open including
-``end``) but this is the **inverse** of the more common
-``[onset, end)`` convention (matches Python slicing, NWB
-``TimeIntervals``, and ``np.searchsorted(side="left")``). Confirm the
-actual upstream behaviour:
+**Resolved (neural_cca v0.4.0):** the interval is half-open-left
+``[onset, end)`` — matching Python slicing, NWB ``TimeIntervals``, and
+``np.searchsorted(side="left")``. (v0.3.0 and earlier used the inverse
+``(onset, end]``; the bridge's own per-trial firing-rate gate in
+`batch_sort_experiment` was flipped to ``[onset, end)`` in v0.1.4 to
+stay consistent.)
 
-- A spike at exactly ``t == onset``: included or dropped?
-- A spike at exactly ``t == end``: included or dropped?
+- A spike at exactly ``t == onset``: **included** — part of the
+  stimulated window (it abuts the baseline ``[0, onset)`` with no gap).
+- A spike at exactly ``t == end``: **dropped** — ``end`` is the
+  trial-length boundary, excluded by the half-open interval.
 
 A silent mismatch shifts PSTHs and tuning curves by integer-spike
 amounts per condition — small but systematic. Once upstream pins the
@@ -316,9 +319,9 @@ documented keys; a rename surfaces in CI.
 The bridge captures ``stim_window=(onset, end)`` as a tuple of seconds.
 By convention:
 
-- **Stimulus epoch**: ``stim_window`` itself. Open/closed semantics
-  determined by upstream — see *stim_window interval semantics*
-  above.
+- **Stimulus epoch**: ``stim_window`` itself, half-open-left
+  ``[onset, end)`` (resolved in neural_cca v0.4.0 — see *stim_window
+  interval semantics* above).
 - **Baseline epoch**: the **implicit** interval ``[0, onset)``. The
   bridge does not currently expose this as a separate field; any
   baseline-corrected metric (firing-rate Δ, signal-to-baseline ratio,

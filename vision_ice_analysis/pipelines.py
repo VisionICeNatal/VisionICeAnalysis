@@ -679,7 +679,7 @@ def batch_sort_experiment(
                 cl_tr = trials_arr[cl_mask]
                 for t in range(n_trials):
                     t_spikes = cl_st[cl_tr == t]
-                    rates[t] = np.sum((t_spikes > s_on) & (t_spikes <= s_end)) / stim_dur
+                    rates[t] = np.sum((t_spikes >= s_on) & (t_spikes < s_end)) / stim_dur
                 fr_by_trial[int(cl)] = rates
 
             # --- Spike times per trial per cluster ---
