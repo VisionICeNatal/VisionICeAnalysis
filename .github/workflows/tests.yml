@@ -11,12 +11,6 @@ concurrency:
 
 jobs:
   test:
-    # Fork-PR token guard: PR runs from a fork would expose
-    # UPSTREAM_REPO_TOKEN (a PAT with read access to the private
-    # visioniceio repo) to attacker-controlled workflow code. Skip the
-    # job entirely on fork PRs; maintainer reviews them locally. Push
-    # events and same-repo PRs run normally.
-    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-latest
     strategy:
       matrix:
@@ -28,25 +22,13 @@ jobs:
           python-version: ${{ matrix.python-version }}
           cache: 'pip'
           cache-dependency-path: pyproject.toml
-      # VisionICeIO is a private repo; anonymous git+https:// clones fail
-      # with "could not read Username". Authenticate via the repo secret
-      # UPSTREAM_REPO_TOKEN (fine-grained PAT with read access to
-      # VisionICeNatal/VisionICeIO). See docs/developer.rst → "Continuous
-      # Integration" for the one-time setup.
-      - name: Configure git for private upstream cloning
-        env:
-          UPSTREAM_REPO_TOKEN: ${{ secrets.UPSTREAM_REPO_TOKEN }}
-        run: |
-          git config --global \
-            url."https://x-access-token:${UPSTREAM_REPO_TOKEN}@github.com/".insteadOf \
-            "https://github.com/"
       # Sibling packages pinned to specific commit SHAs (not @main) so
-      # upstream churn on unrelated PRs cannot flap CI. Bumping a pin
-      # is a deliberate act tied to re-verifying CROSS_CHECKS.md against
-      # the new upstream — see docs/developer.rst → "Upstream
-      # version-pin policy". Once both are on PyPI, drop these two
-      # lines (and the git-config step above) — `pip install -e ".[test]"`
-      # will then pull them automatically.
+      # upstream churn on unrelated PRs cannot flap CI. Both upstreams
+      # are public, so these clone anonymously over git+https. Bumping a
+      # pin is a deliberate act tied to re-verifying CROSS_CHECKS.md
+      # against the new upstream — see docs/developer.rst → "Upstream
+      # version-pin policy". The pins drop out once both are on PyPI and
+      # `pip install -e ".[test]"` can resolve them directly.
       - run: pip install "visioniceio @ git+https://github.com/VisionICeNatal/VisionICeIO.git@63bb74ac1fd473bbd2e9750eb8d4f70964af7538"
       - run: pip install "neural-cca @ git+https://github.com/goecidbn/neural_cca.git@1b542c930799a384655bef79e45eb5a7da58538c"
       - run: pip install -e ".[test]"

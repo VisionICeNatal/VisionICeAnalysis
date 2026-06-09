@@ -108,34 +108,33 @@ Continuous Integration
 ----------------------
 
 Both CI workflows (``.github/workflows/tests.yml`` and ``docs.yml``)
-need to clone ``VisionICeNatal/VisionICeIO`` from git, which is a
-**private** repository. Anonymous ``git+https://`` fails ("could not
-read Username for 'https://github.com'"), so the workflows authenticate
-via a repository secret named ``UPSTREAM_REPO_TOKEN``.
+install ``visioniceio`` and ``neural-cca`` straight from their public
+GitHub repositories with ``pip install "... @ git+https://..."``. Both
+upstream repos are public, so the clones are anonymous — **no token or
+repository secret is required**.
 
-To provision the secret (one-time, per fork):
+This ``git+https://`` install machinery disappears the moment
+``visioniceio`` and ``neural-cca`` are published on PyPI: the pinned
+``pip install ... @ git+https://...`` lines come out and
+``pip install -e ".[test]"`` resolves the upstreams directly.
 
-1. Generate a fine-grained Personal Access Token at
-   https://github.com/settings/personal-access-tokens/new with **read
-   access to the Contents** of ``VisionICeNatal/VisionICeIO`` (and
-   ``goecidbn/neural_cca`` if it ever turns private too).
-2. Add it as a repo secret named ``UPSTREAM_REPO_TOKEN`` under
-   *Settings → Secrets and variables → Actions*.
+.. note::
 
-The workflows then run a ``git config --global url."https://x-access-token:$TOKEN@github.com/".insteadOf "https://github.com/"``
-step before any ``pip install``, so every git+https clone in the job
-transparently uses the token.
-
-This whole dance disappears the moment ``visioniceio`` and
-``neural-cca`` are on PyPI — both the secret and the
-``git config``/``pip install ... @ git+https://...`` lines come out.
+   While the upstream repos were private, these workflows authenticated
+   via an ``UPSTREAM_REPO_TOKEN`` repository secret and a
+   ``git config --global url."https://x-access-token:$TOKEN@github.com/".insteadOf``
+   step. Both repos are public now, so that machinery has been removed.
+   If either repo is ever made private again, re-add a read-only
+   fine-grained PAT as ``UPSTREAM_REPO_TOKEN`` plus the ``insteadOf``
+   step before the installs.
 
 Upstream version-pin policy
 ---------------------------
 
 The bridge and both upstream dependencies (``neural-cca``,
 ``visioniceio``) are pre-1.0. Every minor bump (0.x → 0.(x+1)) can be
-breaking, so ``pyproject.toml`` pins upstreams at ``>=0.1,<0.2``.
+breaking, so ``pyproject.toml`` pins each upstream to its current 0.x
+minor (e.g. ``neural-cca>=0.4,<0.5``, ``visioniceio>=0.1,<0.2``).
 Widening either bound is a release-blocking action: re-verify
 ``CROSS_CHECKS.md`` against the new upstream, then update the pin
 and the changelog in the same commit.

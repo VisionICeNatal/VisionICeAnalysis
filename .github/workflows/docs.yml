@@ -17,11 +17,6 @@ concurrency:
 
 jobs:
   deploy:
-    # Fork-PR token guard: same rationale as tests.yml — keep the
-    # UPSTREAM_REPO_TOKEN PAT off fork PRs. ``on: push`` already
-    # bounds this workflow to main, but the guard documents the policy
-    # alongside tests.yml so the two stay in sync.
-    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-latest
     environment:
       name: github-pages
@@ -33,17 +28,9 @@ jobs:
           python-version: "3.12"
           cache: 'pip'
           cache-dependency-path: pyproject.toml
-      # See tests.yml for the rationale on UPSTREAM_REPO_TOKEN; same
-      # private-repo problem applies here.
-      - name: Configure git for private upstream cloning
-        env:
-          UPSTREAM_REPO_TOKEN: ${{ secrets.UPSTREAM_REPO_TOKEN }}
-        run: |
-          git config --global \
-            url."https://x-access-token:${UPSTREAM_REPO_TOKEN}@github.com/".insteadOf \
-            "https://github.com/"
       # Sibling packages pinned to specific commit SHAs (see tests.yml
-      # for rationale). Keep these SHAs in sync with tests.yml.
+      # for rationale; both upstreams are public so these clone
+      # anonymously). Keep these SHAs in sync with tests.yml.
       - run: pip install "visioniceio @ git+https://github.com/VisionICeNatal/VisionICeIO.git@63bb74ac1fd473bbd2e9750eb8d4f70964af7538"
       - run: pip install "neural-cca @ git+https://github.com/goecidbn/neural_cca.git@1b542c930799a384655bef79e45eb5a7da58538c"
       - run: pip install -e ".[docs]"
