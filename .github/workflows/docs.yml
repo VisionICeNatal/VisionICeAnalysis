@@ -3,6 +3,11 @@ name: Deploy Docs
 on:
   push:
     branches: [main]
+  # Manual re-trigger that starts a *fresh* run (attempt 1). Use this
+  # instead of "re-run jobs": re-running re-uploads the Pages artifact,
+  # which makes deploy-pages fail with "multiple artifacts named
+  # github-pages".
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -16,11 +21,9 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  deploy:
+  # Build the Sphinx site and stage it as the single Pages artifact.
+  build:
     runs-on: ubuntu-latest
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -38,5 +41,16 @@ jobs:
       - uses: actions/upload-pages-artifact@v3
         with:
           path: docs/_build/html
+
+  # Publish to GitHub Pages. Kept separate from build so that re-running
+  # only this job reuses build's single artifact instead of uploading a
+  # duplicate (the cause of the earlier "multiple artifacts" failure).
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
       - id: deployment
         uses: actions/deploy-pages@v4
